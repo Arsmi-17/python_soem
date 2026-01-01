@@ -1,0 +1,12 @@
+# EtherCAT Motor Control - Requirements
+
+# EtherCAT
+pysoem
+
+# Web Server
+fastapi
+uvicorn[standard]
+websockets
+
+# Optional: for development
+# python-multipart

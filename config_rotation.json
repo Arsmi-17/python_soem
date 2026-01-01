@@ -1,0 +1,61 @@
+{
+    "speed": {
+        "rotation_speed": {
+            "velocity": 4000,
+            "acceleration": 2000,
+            "deceleration": 2000,
+            "csp_max_step": 50
+        }
+    },
+    "slaves": {
+        "count": 2,
+        "names": ["Rotation 1", "Rotation 2"],
+        "movement_slaves": [],
+        "rotation_slaves": [0, 1]
+    },
+    "positions": {
+        "home_pos_R": [0, 0],
+        "rot_45": [0.015, 0.015],
+        "rot_90": [0.03, 0.03],
+        "rot_180": [0.06, 0.06]
+    },
+    "template": {
+        "name": "Rotation Only Sequence",
+        "description": "Rotation operations only",
+        "loop": false,
+        "loop_count": 1,
+        "operation_mode": "rotation_only",
+        "steps": [
+            {
+                "name": "Home Rotation",
+                "type": "rotation",
+                "position": "home_pos_R",
+                "delay": 1.0
+            },
+            {
+                "name": "Rotate to 45°",
+                "type": "rotation",
+                "position": "rot_45",
+                "delay": 1.5
+            },
+            {
+                "name": "Rotate to 90°",
+                "type": "rotation",
+                "position": "rot_90",
+                "delay": 1.5
+            },
+            {
+                "name": "Rotate to 180°",
+                "type": "rotation",
+                "position": "rot_180",
+                "delay": 1.5
+            },
+            {
+                "name": "Return to Home",
+                "type": "rotation",
+                "position": "home_pos_R",
+                "delay": 1.0
+            }
+        ]
+    }
+}
