@@ -228,6 +228,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 motor.send_command(MotorProcess.CMD_UDP_CONNECT, cmd_data)
             elif cmd == 'udp_disconnect':
                 motor.send_command(MotorProcess.CMD_UDP_DISCONNECT)
+            elif cmd == 'osc_connect':
+                motor.send_command(MotorProcess.CMD_OSC_CONNECT, cmd_data)
+            elif cmd == 'osc_disconnect':
+                motor.send_command(MotorProcess.CMD_OSC_DISCONNECT)
             elif cmd == 'get_adapters':
                 motor.send_command(MotorProcess.CMD_GET_ADAPTERS)
             elif cmd == 'change_interface':

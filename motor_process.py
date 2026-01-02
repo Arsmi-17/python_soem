@@ -38,6 +38,8 @@ class MotorProcess:
     CMD_CHANGE_INTERFACE = 'change_interface'  # Change network interface
     CMD_GET_ADAPTERS = 'get_adapters'  # Get available network adapters
     CMD_RECOVER = 'recover'  # Manual recovery after communication error
+    CMD_OSC_CONNECT = 'osc_connect'  # Start OSC sender/receiver
+    CMD_OSC_DISCONNECT = 'osc_disconnect'  # Stop OSC
     CMD_QUIT = 'quit'
 
     
@@ -65,6 +67,12 @@ class MotorProcess:
         self.shared_udp_connected = Value(ctypes.c_int, 0)  # 0=disconnected, 1=connected
         self.shared_udp_ip = Array(ctypes.c_char, 64)
         self.shared_udp_port = Value(ctypes.c_int, 9000)
+
+        # OSC state (for PP mode)
+        self.shared_osc_connected = Value(ctypes.c_int, 0)  # 0=disconnected, 1=connected
+        self.shared_osc_mode = Value(ctypes.c_int, 0)  # 0=off, 1=receive, 2=send, 3=both
+        self.shared_osc_ip = Array(ctypes.c_char, 64)
+        self.shared_osc_port = Value(ctypes.c_int, 8000)
 
         # Event tracking for UI notifications
         self.shared_event_type = Value(ctypes.c_int, 0)  # 0=none, 1=slave_change, 2=error, 3=info
@@ -105,7 +113,11 @@ class MotorProcess:
                 self.shared_event_slave,
                 self.shared_event_code,
                 self.shared_event_msg,
-                self.shared_event_counter
+                self.shared_event_counter,
+                self.shared_osc_connected,
+                self.shared_osc_mode,
+                self.shared_osc_ip,
+                self.shared_osc_port
             )
         )
         self.process.start()
@@ -174,6 +186,12 @@ class MotorProcess:
         except:
             udp_ip = "127.0.0.1"
 
+        # Get OSC state
+        try:
+            osc_ip = self.shared_osc_ip.value.decode('utf-8')
+        except:
+            osc_ip = "0.0.0.0"
+
         # Get event info
         event = None
         if self.shared_event_type.value != 0:
@@ -205,6 +223,10 @@ class MotorProcess:
             'udp_connected': bool(self.shared_udp_connected.value),
             'udp_ip': udp_ip,
             'udp_port': self.shared_udp_port.value,
+            'osc_connected': bool(self.shared_osc_connected.value),
+            'osc_mode': self.shared_osc_mode.value,
+            'osc_ip': osc_ip,
+            'osc_port': self.shared_osc_port.value,
             'event': event
         }
 
@@ -216,7 +238,8 @@ class MotorProcess:
     def _run_process(interface, cmd_queue, resp_queue, shared_data, shared_state,
                      shared_moving, shared_num_slaves, shared_mode, shared_interface, shared_stop, running,
                      shared_udp_connected, shared_udp_ip, shared_udp_port,
-                     shared_event_type, shared_event_slave, shared_event_code, shared_event_msg, shared_event_counter):
+                     shared_event_type, shared_event_slave, shared_event_code, shared_event_msg, shared_event_counter,
+                     shared_osc_connected, shared_osc_mode, shared_osc_ip, shared_osc_port):
         """Main process loop"""
         import pysoem
 
@@ -454,7 +477,316 @@ class MotorProcess:
             sock.close()
             shared_udp_connected.value = 0
             print("[UDP] Listener stopped")
-        
+
+        # =====================================================
+        # OSC (Open Sound Control) for PP Mode
+        # =====================================================
+        # OSC modes: 0=off, 1=receive only, 2=send only, 3=both
+        OSC_MODE_OFF = 0
+        OSC_MODE_RECEIVE = 1
+        OSC_MODE_SEND = 2
+        OSC_MODE_BOTH = 3
+
+        osc_send_socket = [None]  # Use list for mutable reference in nested functions
+        osc_target_ip = ['']
+        osc_target_port = [8000]
+        osc_recv_thread = [None]
+        osc_recv_shutdown = [False]
+
+        def add_osc_log(log_type, message):
+            """Send OSC log entry to UI. log_type: 'send', 'recv', 'info'"""
+            entry = {
+                'type': log_type,
+                'message': message,
+                'time': time.time()
+            }
+            send_response(True, f"[OSC] {message}", {'osc_log': entry})
+
+        def osc_send(address, *args):
+            """
+            Send OSC message via UDP broadcast.
+            Simple OSC implementation without external library.
+            Address format: /path/to/handler
+            Args: floats or ints
+            """
+            if shared_osc_mode.value not in [OSC_MODE_SEND, OSC_MODE_BOTH]:
+                return
+            if osc_send_socket[0] is None:
+                return
+
+            try:
+                # Build OSC message manually
+                # OSC format: address (null-padded to 4 bytes), typetag string, arguments
+
+                # Pad address to multiple of 4 bytes
+                addr_bytes = address.encode('utf-8') + b'\x00'
+                while len(addr_bytes) % 4 != 0:
+                    addr_bytes += b'\x00'
+
+                # Build type tag string
+                type_tag = ','
+                for arg in args:
+                    if isinstance(arg, float):
+                        type_tag += 'f'
+                    elif isinstance(arg, int):
+                        type_tag += 'i'
+                    else:
+                        type_tag += 's'
+
+                type_bytes = type_tag.encode('utf-8') + b'\x00'
+                while len(type_bytes) % 4 != 0:
+                    type_bytes += b'\x00'
+
+                # Build argument data
+                import struct
+                arg_bytes = b''
+                for arg in args:
+                    if isinstance(arg, float):
+                        arg_bytes += struct.pack('>f', arg)
+                    elif isinstance(arg, int):
+                        arg_bytes += struct.pack('>i', arg)
+                    else:
+                        # String: null-terminated and padded
+                        s = str(arg).encode('utf-8') + b'\x00'
+                        while len(s) % 4 != 0:
+                            s += b'\x00'
+                        arg_bytes += s
+
+                # Combine all parts
+                osc_message = addr_bytes + type_bytes + arg_bytes
+
+                # Send to target IP
+                osc_send_socket[0].sendto(osc_message, (osc_target_ip[0], osc_target_port[0]))
+
+                # Log the sent message
+                args_str = ' '.join(str(a) for a in args) if args else ''
+                add_osc_log('send', f"{address} {args_str}".strip())
+
+            except Exception as e:
+                print(f"[OSC] Send error: {e}")
+
+        def osc_send_slave_move(slave_idx, position_meters):
+            """Send OSC message when slave moves: /slave_move/<slave_id>/<position>"""
+            osc_send(f"/slave_move/{slave_idx}/{position_meters:.4f}")
+
+        def osc_send_template_step(step_index):
+            """Send OSC message when template step starts: /template_step with step_no as argument"""
+            osc_send("/template_step", step_index)
+
+        def osc_send_template_complete():
+            """Send OSC message when template completes: /template_complete"""
+            osc_send("/template_complete")
+
+        def parse_osc_message(data):
+            """
+            Parse incoming OSC message.
+            Returns (address, args) tuple or (None, None) if invalid.
+            """
+            try:
+                import struct
+
+                # Find address (null-terminated, padded to 4 bytes)
+                null_idx = data.find(b'\x00')
+                if null_idx == -1:
+                    return None, None
+
+                address = data[:null_idx].decode('utf-8')
+
+                # Skip to next 4-byte boundary
+                idx = null_idx + 1
+                while idx % 4 != 0:
+                    idx += 1
+
+                # Parse type tag
+                if idx >= len(data) or data[idx:idx+1] != b',':
+                    return address, []
+
+                type_tag_end = data.find(b'\x00', idx)
+                type_tag = data[idx+1:type_tag_end].decode('utf-8')  # Skip the comma
+
+                # Skip to next 4-byte boundary
+                idx = type_tag_end + 1
+                while idx % 4 != 0:
+                    idx += 1
+
+                # Parse arguments
+                args = []
+                for t in type_tag:
+                    if t == 'f':
+                        val = struct.unpack('>f', data[idx:idx+4])[0]
+                        args.append(val)
+                        idx += 4
+                    elif t == 'i':
+                        val = struct.unpack('>i', data[idx:idx+4])[0]
+                        args.append(val)
+                        idx += 4
+                    elif t == 's':
+                        str_end = data.find(b'\x00', idx)
+                        val = data[idx:str_end].decode('utf-8')
+                        args.append(val)
+                        idx = str_end + 1
+                        while idx % 4 != 0:
+                            idx += 1
+
+                return address, args
+
+            except Exception as e:
+                print(f"[OSC] Parse error: {e}")
+                return None, None
+
+        def osc_receiver(ip, port, shutdown_flag, controller):
+            """
+            Listen for incoming OSC messages.
+            Supported commands:
+            - /slave_move/<slave_id> <position_float>  - Move slave to position
+            - /template_run                            - Run current template
+            - /template_stop                           - Stop template
+            - /enable                                  - Enable all drives
+            - /disable                                 - Disable all drives
+            """
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.settimeout(0.5)
+
+            try:
+                sock.bind((ip, port))
+            except Exception as e:
+                print(f"[OSC] Receiver failed to bind: {e}")
+                send_response(False, f"OSC bind failed: {e}")
+                return
+
+            print(f"[OSC] Receiver started on {ip}:{port}")
+
+            while not shutdown_flag[0] and running.value:
+                try:
+                    data, addr = sock.recvfrom(4096)
+
+                    address, args = parse_osc_message(data)
+                    if address is None:
+                        continue
+
+                    # Log received message
+                    args_str = ' '.join(str(a) for a in args) if args else ''
+                    add_osc_log('recv', f"{address} {args_str}".strip())
+                    print(f"[OSC] Received: {address} {args}")
+
+                    # Handle different OSC commands
+                    if address.startswith('/slave_move/'):
+                        # Format: /slave_move/<slave_id> with float arg for position
+                        parts = address.split('/')
+                        if len(parts) >= 3:
+                            try:
+                                slave_idx = int(parts[2])
+                                if args and len(args) > 0:
+                                    position = float(args[0])
+                                elif len(parts) >= 4:
+                                    position = float(parts[3])
+                                else:
+                                    continue
+
+                                if slave_idx < 0 or slave_idx >= controller.slaves_count:
+                                    print(f"[OSC] Invalid slave: {slave_idx}")
+                                    continue
+
+                                if controller.is_enabled(slave_idx):
+                                    controller.move_to_meters(slave_idx, position)
+                                    print(f"[OSC] Moving slave {slave_idx} to {position:.4f}m")
+                                else:
+                                    print(f"[OSC] Slave {slave_idx} not enabled")
+
+                            except (ValueError, IndexError) as e:
+                                print(f"[OSC] Parse error for slave_move: {e}")
+
+                    elif address == '/template_run':
+                        print("[OSC] Triggering template run")
+                        cmd_queue.put({'cmd': MotorProcess.CMD_TEMPLATE})
+
+                    elif address == '/template_stop':
+                        print("[OSC] Triggering stop")
+                        shared_stop.value = 1
+
+                    elif address == '/enable':
+                        print("[OSC] Triggering enable")
+                        cmd_queue.put({'cmd': MotorProcess.CMD_ENABLE})
+
+                    elif address == '/disable':
+                        print("[OSC] Triggering disable")
+                        cmd_queue.put({'cmd': MotorProcess.CMD_DISABLE})
+
+                    elif address == '/reset':
+                        print("[OSC] Triggering reset")
+                        cmd_queue.put({'cmd': MotorProcess.CMD_RESET})
+
+                except socket.timeout:
+                    continue
+                except Exception as e:
+                    if not shutdown_flag[0]:
+                        print(f"[OSC] Receiver error: {e}")
+
+            sock.close()
+            print("[OSC] Receiver stopped")
+
+        def start_osc(mode, send_ip, recv_ip, port):
+            """Start OSC sender and/or receiver based on mode"""
+            nonlocal osc_send_socket, osc_target_ip, osc_target_port, osc_recv_thread, osc_recv_shutdown
+
+            # Stop existing OSC if any
+            stop_osc()
+
+            osc_target_ip[0] = send_ip
+            osc_target_port[0] = port
+            shared_osc_mode.value = mode
+            shared_osc_ip.value = recv_ip.encode('utf-8')[:63]
+            shared_osc_port.value = port
+
+            # Start sender (direct UDP to target IP, not broadcast)
+            if mode in [OSC_MODE_SEND, OSC_MODE_BOTH]:
+                try:
+                    osc_send_socket[0] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    # Only enable broadcast if sending to broadcast address
+                    if send_ip in ['255.255.255.255', '<broadcast>']:
+                        osc_send_socket[0].setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                    print(f"[OSC] Sender started (sending to {send_ip}:{port})")
+                except Exception as e:
+                    print(f"[OSC] Failed to create send socket: {e}")
+                    osc_send_socket[0] = None
+
+            # Start receiver
+            if mode in [OSC_MODE_RECEIVE, OSC_MODE_BOTH]:
+                osc_recv_shutdown[0] = False
+                osc_recv_thread[0] = threading.Thread(
+                    target=osc_receiver,
+                    args=(recv_ip, port, osc_recv_shutdown, ec),
+                    daemon=True
+                )
+                osc_recv_thread[0].start()
+
+            shared_osc_connected.value = 1
+            mode_str = {OSC_MODE_RECEIVE: 'Receive', OSC_MODE_SEND: 'Send', OSC_MODE_BOTH: 'Both'}[mode]
+            send_response(True, f"OSC started ({mode_str}) - Send: {send_ip}:{port}, Recv: {recv_ip}:{port}")
+
+        def stop_osc():
+            """Stop OSC sender and receiver"""
+            nonlocal osc_send_socket, osc_recv_thread, osc_recv_shutdown
+
+            # Stop receiver
+            if osc_recv_thread[0] and osc_recv_thread[0].is_alive():
+                osc_recv_shutdown[0] = True
+                osc_recv_thread[0].join(timeout=1.0)
+                osc_recv_thread[0] = None
+
+            # Close sender socket
+            if osc_send_socket[0]:
+                try:
+                    osc_send_socket[0].close()
+                except:
+                    pass
+                osc_send_socket[0] = None
+
+            shared_osc_connected.value = 0
+            shared_osc_mode.value = OSC_MODE_OFF
+            print("[OSC] Stopped")
+
         def update_shared_status():
             """Update shared memory with current status"""
             if ec:
@@ -1074,6 +1406,33 @@ class MotorProcess:
                         else:
                             send_response(True, "UDP was not connected")
 
+                    elif cmd == MotorProcess.CMD_OSC_CONNECT:
+                        # Start OSC sender/receiver
+                        if data:
+                            osc_send_ip = data.get('send_ip', '127.0.0.1')
+                            osc_recv_ip = data.get('recv_ip', '0.0.0.0')
+                            osc_port = data.get('port', 8000)
+                            osc_mode = data.get('mode', OSC_MODE_BOTH)  # 1=recv, 2=send, 3=both
+                        else:
+                            osc_send_ip = '127.0.0.1'
+                            osc_recv_ip = '0.0.0.0'
+                            osc_port = 8000
+                            osc_mode = OSC_MODE_BOTH
+
+                        if isinstance(osc_port, str):
+                            osc_port = int(osc_port)
+                        if isinstance(osc_mode, str):
+                            osc_mode = int(osc_mode)
+
+                        print(f"\n[OSC] Starting OSC (mode={osc_mode}, send={osc_send_ip}, recv={osc_recv_ip}, port={osc_port})")
+                        start_osc(osc_mode, osc_send_ip, osc_recv_ip, osc_port)
+
+                    elif cmd == MotorProcess.CMD_OSC_DISCONNECT:
+                        # Stop OSC
+                        print("\n[OSC] Stopping OSC...")
+                        stop_osc()
+                        send_response(True, "OSC disconnected")
+
                     elif cmd == MotorProcess.CMD_GET_ADAPTERS:
                         # Get list of available network adapters
                         print("\n[GET ADAPTERS] Listing network adapters...")
@@ -1426,6 +1785,9 @@ class MotorProcess:
                                     elif movement_slave_positions:
                                         move_order = [movement_slave_positions[0][0]]
 
+                                    # Send OSC notification BEFORE step starts
+                                    osc_send_template_step(step_idx)
+
                                     # Send step start notification with move order
                                     send_response(True, f"Executing: {name}", {
                                         'template_step': {
@@ -1442,6 +1804,11 @@ class MotorProcess:
                                     # Execute SIMULTANEOUS movement for all collected positions
                                     if slave_positions:
                                         print(f"    Starting SIMULTANEOUS move for {len(slave_positions)} slaves...")
+
+                                        # OSC notifications for each slave move (currently disabled)
+                                        # for slave_idx, pos in slave_positions:
+                                        #     osc_send_slave_move(slave_idx, pos)
+
                                         ec.move_multiple_to_meters(slave_positions)
 
                                         # Wait for all slaves to reach target
@@ -1537,6 +1904,10 @@ class MotorProcess:
                         else:
                             # Send template complete with total time
                             print(f"\n[Template] Complete in {template_total_time:.1f}s")
+
+                            # Send OSC notification for template completion
+                            osc_send_template_complete()
+
                             send_response(True, f"Template complete ({template_total_time:.1f}s)", {
                                 'template_complete': {
                                     'total_time': template_total_time

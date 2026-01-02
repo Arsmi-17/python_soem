@@ -673,6 +673,82 @@
                 </button>
             </div>
 
+            <!-- OSC Section (PP mode only) -->
+            <div id="oscSection" style="margin-top: 20px; display: none;">
+                <h2 style="border-color: var(--text-gold); color: var(--text-gold);">OSC Control</h2>
+
+                <div class="card">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                        <span class="status-dot disconnected" id="oscStatusDot"></span>
+                        <span id="oscStatusText" style="font-size: 0.85rem;">Disconnected</span>
+                    </div>
+
+                    <!-- Connection Info (shown when connected) -->
+                    <div id="oscConnectionInfo" style="display: none; margin-bottom: 10px; padding: 8px; background: var(--bg-dark); border-radius: 4px; font-size: 0.75rem;">
+                        <div id="oscRecvInfo" style="color: var(--accent-blue); margin-bottom: 3px;"></div>
+                        <div id="oscSendInfo" style="color: var(--accent-green);"></div>
+                    </div>
+
+                    <!-- OSC Mode Selection -->
+                    <div class="config-label" style="margin-bottom: 5px;">Mode:</div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <label style="display: flex; align-items: center; gap: 5px; font-size: 0.8rem; cursor: pointer;">
+                            <input type="radio" name="oscMode" value="1" style="margin: 0; width: auto;">
+                            <span>Receive</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; font-size: 0.8rem; cursor: pointer;">
+                            <input type="radio" name="oscMode" value="2" style="margin: 0; width: auto;">
+                            <span>Send</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; font-size: 0.8rem; cursor: pointer;">
+                            <input type="radio" name="oscMode" value="3" checked style="margin: 0; width: auto;">
+                            <span>Both</span>
+                        </label>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                        <div>
+                            <div class="config-label">Send to IP:</div>
+                            <input type="text" id="oscSendIp" value="127.0.0.1" placeholder="127.0.0.1" style="margin: 0;">
+                        </div>
+                        <div>
+                            <div class="config-label">Receive IP:</div>
+                            <input type="text" id="oscRecvIp" value="0.0.0.0" placeholder="0.0.0.0" style="margin: 0;">
+                        </div>
+                        <div>
+                            <div class="config-label">Port:</div>
+                            <input type="number" id="oscPort" value="8000" placeholder="8000" style="margin: 0;">
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-success" onclick="oscConnect()" id="oscConnectBtn" style="flex: 1;">Start OSC</button>
+                        <button class="btn btn-danger" onclick="oscDisconnect()" id="oscDisconnectBtn" style="flex: 1;" disabled>Stop OSC</button>
+                    </div>
+
+                    <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 10px;">
+                        <div style="margin-bottom: 5px;"><strong>Sends:</strong></div>
+                        <div>/slave_move/&lt;slave_id&gt;/&lt;position&gt;</div>
+                        <div>/template_step/&lt;step_no&gt;</div>
+                        <div>/template_complete</div>
+                        <div style="margin-top: 5px;"><strong>Receives:</strong></div>
+                        <div>/slave_move/&lt;id&gt; &lt;float&gt; - Move slave</div>
+                        <div>/template_run - Run template</div>
+                        <div>/template_stop - Stop template</div>
+                        <div>/enable, /disable, /reset</div>
+                    </div>
+                </div>
+
+                <!-- OSC Log Display -->
+                <div class="card" style="margin-top: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-weight: bold; color: var(--text-gold);">OSC Log</span>
+                        <button class="btn btn-outline" onclick="clearOscLog()" style="width: auto; padding: 5px 10px; font-size: 0.7rem;">Clear</button>
+                    </div>
+                    <div id="osc-log-window" style="height: 150px; overflow-y: auto; background: var(--bg-dark); border: 1px solid var(--border-ui); border-radius: 4px; padding: 8px; font-family: monospace; font-size: 0.75rem;"></div>
+                </div>
+            </div>
+
             <!-- UDP Receiver Section (CSP mode only) -->
             <div id="udpSection" style="margin-top: 20px; display: none;">
                 <h2 style="border-color: var(--accent-purple); color: var(--accent-purple);">UDP Receiver</h2>
@@ -907,10 +983,21 @@
                 updateUdpStatus(status.udp_connected);
             }
 
+            // Update OSC status
+            if (status.osc_connected !== undefined) {
+                updateOscStatus(status.osc_connected, status.osc_mode || 0, status.osc_ip, status.osc_port);
+            }
+
             // Show/hide UDP section based on mode (only show in CSP mode = 8)
             const udpSection = document.getElementById('udpSection');
             if (udpSection) {
                 udpSection.style.display = (status.mode === 8) ? 'block' : 'none';
+            }
+
+            // Show/hide OSC section based on mode (only show in PP mode = 1)
+            const oscSection = document.getElementById('oscSection');
+            if (oscSection) {
+                oscSection.style.display = (status.mode === 1) ? 'block' : 'none';
             }
 
             // Log slave info on first update
@@ -1394,6 +1481,11 @@
             // Handle UDP log entries
             if (resp.data && resp.data.udp_log) {
                 addUdpLogEntry(resp.data.udp_log);
+            }
+
+            // Handle OSC log entries
+            if (resp.data && resp.data.osc_log) {
+                addOscLogEntry(resp.data.osc_log);
             }
         }
 
@@ -1882,6 +1974,113 @@
                 connectBtn.disabled = false;
                 disconnectBtn.disabled = true;
             }
+        }
+
+        // OSC Connect
+        function oscConnect() {
+            const sendIp = document.getElementById('oscSendIp').value || '127.0.0.1';
+            const recvIp = document.getElementById('oscRecvIp').value || '0.0.0.0';
+            const port = parseInt(document.getElementById('oscPort').value) || 8000;
+            const modeRadio = document.querySelector('input[name="oscMode"]:checked');
+            const mode = modeRadio ? parseInt(modeRadio.value) : 3;  // 1=recv, 2=send, 3=both
+            const modeNames = {1: 'Receive', 2: 'Send', 3: 'Both'};
+            sendCmd('osc_connect', { send_ip: sendIp, recv_ip: recvIp, port: port, mode: mode });
+            log(`Starting OSC (${modeNames[mode]}): Send=${sendIp}, Recv=${recvIp}, Port=${port}...`, 'com');
+
+            // Store for display
+            window.oscConfig = { sendIp, recvIp, port, mode };
+        }
+
+        // OSC Disconnect
+        function oscDisconnect() {
+            sendCmd('osc_disconnect');
+            log('Stopping OSC...', 'com');
+            window.oscConfig = null;
+        }
+
+        // Update OSC status from status updates
+        function updateOscStatus(oscConnected, oscMode, oscIp, oscPort) {
+            const dot = document.getElementById('oscStatusDot');
+            const text = document.getElementById('oscStatusText');
+            const connectBtn = document.getElementById('oscConnectBtn');
+            const disconnectBtn = document.getElementById('oscDisconnectBtn');
+            const connInfo = document.getElementById('oscConnectionInfo');
+            const recvInfo = document.getElementById('oscRecvInfo');
+            const sendInfo = document.getElementById('oscSendInfo');
+
+            if (!dot || !text) return;
+
+            if (oscConnected) {
+                dot.className = 'status-dot enabled';
+                const modeNames = {1: 'Receiving', 2: 'Sending', 3: 'Send & Receive'};
+                text.textContent = modeNames[oscMode] || 'Connected';
+                text.style.color = 'var(--accent-green)';
+                if (connectBtn) connectBtn.disabled = true;
+                if (disconnectBtn) disconnectBtn.disabled = false;
+
+                // Show connection info
+                if (connInfo) {
+                    connInfo.style.display = 'block';
+                    // Receive info (mode 1 or 3)
+                    if (oscMode === 1 || oscMode === 3) {
+                        recvInfo.innerHTML = `<strong>Receiving on:</strong> ${oscIp || '0.0.0.0'}:${oscPort || 8000}`;
+                        recvInfo.style.display = 'block';
+                    } else {
+                        recvInfo.style.display = 'none';
+                    }
+                    // Send info (mode 2 or 3)
+                    if (oscMode === 2 || oscMode === 3) {
+                        const sendIp = window.oscConfig?.sendIp || '127.0.0.1';
+                        sendInfo.innerHTML = `<strong>Sending to:</strong> ${sendIp}:${oscPort || 8000}`;
+                        sendInfo.style.display = 'block';
+                    } else {
+                        sendInfo.style.display = 'none';
+                    }
+                }
+            } else {
+                dot.className = 'status-dot disconnected';
+                text.textContent = 'Disconnected';
+                text.style.color = '';
+                if (connectBtn) connectBtn.disabled = false;
+                if (disconnectBtn) disconnectBtn.disabled = true;
+                if (connInfo) connInfo.style.display = 'none';
+            }
+        }
+
+        // Add OSC log entry
+        function addOscLogEntry(entry) {
+            const logWindow = document.getElementById('osc-log-window');
+            if (!logWindow) return;
+
+            const div = document.createElement('div');
+            div.style.marginBottom = '3px';
+            div.style.borderBottom = '1px solid rgba(48, 54, 61, 0.5)';
+            div.style.paddingBottom = '3px';
+
+            const time = new Date().toLocaleTimeString();
+            const timeSpan = `<span style="color: var(--text-secondary);">[${time}]</span>`;
+
+            if (entry.type === 'recv') {
+                div.innerHTML = `${timeSpan} <span style="color: var(--accent-blue);">◀ RECV:</span> ${entry.message}`;
+            } else if (entry.type === 'send') {
+                div.innerHTML = `${timeSpan} <span style="color: var(--accent-green);">▶ SEND:</span> ${entry.message}`;
+            } else {
+                div.innerHTML = `${timeSpan} <span style="color: var(--text-secondary);">${entry.message}</span>`;
+            }
+
+            logWindow.appendChild(div);
+            logWindow.scrollTop = logWindow.scrollHeight;
+
+            // Limit entries
+            while (logWindow.children.length > 100) {
+                logWindow.removeChild(logWindow.firstChild);
+            }
+        }
+
+        // Clear OSC log
+        function clearOscLog() {
+            const logWindow = document.getElementById('osc-log-window');
+            if (logWindow) logWindow.innerHTML = '';
         }
 
         // Load config file
