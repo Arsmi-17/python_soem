@@ -329,8 +329,8 @@ async def reload_config():
 
 @app.get("/api/config")
 async def get_config():
-    """Get config.json"""
-    config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+    """Get config.json from json folder"""
+    config_path = os.path.join(os.path.dirname(__file__), 'json', 'config.json')
     try:
         with open(config_path, 'r') as f:
             return json.load(f)
@@ -353,8 +353,8 @@ async def get_adapters():
 
 @app.post("/api/config")
 async def save_config(config: dict):
-    """Save config.json"""
-    config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+    """Save config.json to json folder"""
+    config_path = os.path.join(os.path.dirname(__file__), 'json', 'config.json')
     try:
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=4)

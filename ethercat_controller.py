@@ -18,8 +18,8 @@ import os
 
 
 def load_config():
-    """Load configuration from config.json"""
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
+    """Load configuration from json/config.json"""
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'json', 'config.json')
     try:
         with open(config_path, 'r') as f:
             config = json.load(f)
@@ -876,108 +876,123 @@ class EtherCATController:
 
 
     def stop_motion(self, idx):
-        """Stop motion immediately - handles all modes (CSP, PP, PV)"""
-        print(f"  Stopping slave {idx}...")
+        """Stop motion IMMEDIATELY - NO deceleration, stays enabled, handles all modes"""
+        print(f"  IMMEDIATE STOP slave {idx}...")
 
         # Stop trajectory FIRST (use per-slave lock) - for CSP mode
         with self._trajectory_locks[idx]:
             self._trajectory_active[idx] = False
 
-        # Give PDO loop time to process the stop
-        time.sleep(0.005)
-
-        # Sync target position to actual position
+        # Sync target position to actual position IMMEDIATELY
         actual_pos = self._get_pos_scaled_internal(idx)
         with self._pdo_lock:
             self._target_position[idx] = actual_pos
 
-        # Mode-specific stop handling
+        # Mode-specific immediate stop
         if self.mode == self.MODE_PV:
-            # PV mode: Set velocity to 0
+            # PV mode: Set velocity to 0 immediately
             self.set_target_velocity(idx, 0)
         elif self.mode == self.MODE_PP:
-            # PP mode: The drive is executing its internal trajectory
-            # We need to use HALT bit (bit 8) to stop the motion
-            # HALT = 1 stops the motion, then we clear it
+            # PP mode: Set MAXIMUM deceleration for instant stop, then use HALT
+            try:
+                slave = self.master.slaves[idx]
+                # Set deceleration to maximum (0x7FFFFFFF = max int32)
+                slave.sdo_write(0x6084, 0x00, (0x7FFFFFFF).to_bytes(4, 'little', signed=False))
+            except:
+                pass
+
+            # Use HALT bit to stop
             with self._pdo_lock:
-                # Set HALT bit to stop motion
                 self._control_word[idx] = self.CONTROL_ENABLE_OP | self.CONTROL_HALT
-            
-            # Give drive time to process HALT
-            time.sleep(0.02)
-            
-            # Also update target to current position so when HALT is cleared,
-            # the drive doesn't try to continue to old target
+
+            time.sleep(0.002)
+
+            # Update target to current position
             actual_pos = self._get_pos_scaled_internal(idx)
             with self._pdo_lock:
                 self._target_position[idx] = actual_pos
-                # Clear HALT bit but keep enabled
-                self._control_word[idx] = self.CONTROL_ENABLE_OP
-            
-            # Send new setpoint at current position to "cancel" any pending move
-            time.sleep(0.01)
-            with self._pdo_lock:
+                # Clear HALT and send new setpoint at current position
                 self._control_word[idx] = self.CONTROL_ENABLE_OP | self.CONTROL_NEW_SETPOINT
-            time.sleep(0.02)
+
+            time.sleep(0.002)
             with self._pdo_lock:
                 self._control_word[idx] = self.CONTROL_ENABLE_OP
 
-        print(f"  Slave {idx} stopped at position: {actual_pos}")
+            # Restore original deceleration
+            try:
+                slave.sdo_write(0x6084, 0x00, self._decel.to_bytes(4, 'little', signed=False))
+            except:
+                pass
+        # CSP mode: target already synced above, PDO loop will hold position
+
+        print(f"  Slave {idx} STOPPED at position: {actual_pos}")
 
     def stop_all(self):
-        """Stop all slaves immediately - handles all modes (CSP, PP, PV)"""
-        print("\n[STOP ALL] Stopping all motion...")
+        """Stop all slaves IMMEDIATELY - NO deceleration, stays enabled"""
+        print("\n[STOP ALL] IMMEDIATE STOP all motion...")
 
         # Stop all trajectories first (use per-slave locks) - for CSP mode
         for i in range(self.slaves_count):
             with self._trajectory_locks[i]:
                 self._trajectory_active[i] = False
 
-        # Mode-specific stop handling
-        if self.mode == self.MODE_PP:
-            # PP mode: Set HALT bit for all slaves to stop internal trajectories
+        # Sync all positions to actual IMMEDIATELY
+        for i in range(self.slaves_count):
+            actual_pos = self._get_pos_scaled_internal(i)
+            with self._pdo_lock:
+                self._target_position[i] = actual_pos
+
+        # Mode-specific immediate stop
+        if self.mode == self.MODE_PV:
+            # PV mode: Set velocity to 0 for all slaves
+            for i in range(self.slaves_count):
+                try:
+                    slave = self.master.slaves[i]
+                    slave.sdo_write(0x60FF, 0x00, (0).to_bytes(4, 'little', signed=True))
+                except:
+                    pass
+        elif self.mode == self.MODE_PP:
+            # PP mode: Set MAXIMUM deceleration for instant stop on all slaves
+            for i in range(self.slaves_count):
+                try:
+                    slave = self.master.slaves[i]
+                    slave.sdo_write(0x6084, 0x00, (0x7FFFFFFF).to_bytes(4, 'little', signed=False))
+                except:
+                    pass
+
+            # Use HALT bit for all slaves
             with self._pdo_lock:
                 for i in range(self.slaves_count):
                     self._control_word[i] = self.CONTROL_ENABLE_OP | self.CONTROL_HALT
-            
-            # Give drives time to process HALT
-            time.sleep(0.02)
-            
-            # Update targets to current positions and clear HALT
+
+            time.sleep(0.002)
+
+            # Update all targets to current positions
             for i in range(self.slaves_count):
                 actual_pos = self._get_pos_scaled_internal(i)
                 with self._pdo_lock:
                     self._target_position[i] = actual_pos
-                    self._control_word[i] = self.CONTROL_ENABLE_OP
-            
-            # Send new setpoint at current positions
-            time.sleep(0.01)
+
+            # Clear HALT and send new setpoints at current positions
             with self._pdo_lock:
                 for i in range(self.slaves_count):
                     self._control_word[i] = self.CONTROL_ENABLE_OP | self.CONTROL_NEW_SETPOINT
-            time.sleep(0.02)
+
+            time.sleep(0.002)
             with self._pdo_lock:
                 for i in range(self.slaves_count):
                     self._control_word[i] = self.CONTROL_ENABLE_OP
-        else:
-            # Give time for PDO loop to recognize stop (CSP/PV)
-            time.sleep(0.01)
 
-            # Sync all positions
+            # Restore original deceleration for all slaves
             for i in range(self.slaves_count):
-                actual_pos = self._get_pos_scaled_internal(i)
-                with self._pdo_lock:
-                    self._target_position[i] = actual_pos
+                try:
+                    slave = self.master.slaves[i]
+                    slave.sdo_write(0x6084, 0x00, self._decel.to_bytes(4, 'little', signed=False))
+                except:
+                    pass
+        # CSP mode: targets already synced above, PDO loop will hold positions
 
-                # For PV mode, stop velocity
-                if self.mode == self.MODE_PV:
-                    try:
-                        slave = self.master.slaves[i]
-                        slave.sdo_write(0x60FF, 0x00, (0).to_bytes(4, 'little', signed=True))
-                    except:
-                        pass
-
-        print("[STOP ALL] All slaves stopped")
+        print("[STOP ALL] All slaves STOPPED immediately (still enabled)")
 
     def move_to_position(self, idx, position_scaled, trigger_immediate=True):
         """
@@ -1068,7 +1083,165 @@ class EtherCATController:
                         self._trajectory_active[idx] = True
 
         print(f"  [TRIGGER] Started simultaneous move for slaves: {slave_indices}")
-    
+
+    def calculate_move_order(self, slave_positions):
+        """
+        Calculate safe move order for multiple slaves to avoid collisions.
+        Uses topological sort based on current/target positions and movement directions.
+
+        Based on the algorithm from semicon_slider.c:
+        1. Determine if motors are spreading or converging (variance comparison)
+        2. Detect potential collision paths between motors
+        3. Create dependency graph with edges
+        4. Use topological sort to find safe move order
+
+        Args:
+            slave_positions: List of tuples [(slave_idx, target_meters), ...]
+
+        Returns:
+            tuple: (ordered_list, is_spreading)
+                - ordered_list: List of slave indices in safe move order
+                - is_spreading: True if motors are spreading apart, False if converging
+        """
+        if not slave_positions or len(slave_positions) <= 1:
+            return ([sp[0] for sp in slave_positions], False)
+
+        num_motors = len(slave_positions)
+
+        # Get current and target positions in meters
+        current_meters = []
+        target_meters = []
+        slave_indices = []
+
+        for slave_idx, target in slave_positions:
+            current = self.read_position_meters(slave_idx)
+            current_meters.append(current)
+            target_meters.append(target)
+            slave_indices.append(slave_idx)
+
+        # Calculate mean positions
+        current_mean = sum(current_meters) / num_motors
+        target_mean = sum(target_meters) / num_motors
+
+        # Calculate variance to determine spreading vs converging
+        current_var = sum((c - current_mean) ** 2 for c in current_meters) / num_motors
+        target_var = sum((t - target_mean) ** 2 for t in target_meters) / num_motors
+
+        is_spreading = target_var > current_var + 1e-6
+
+        # Determine direction for each motor: 'L' (left/negative), 'R' (right/positive), '0' (no move)
+        directions = []
+        for i in range(num_motors):
+            delta = target_meters[i] - current_meters[i]
+            if delta < -0.0001:  # Moving left (negative direction)
+                directions.append('L')
+            elif delta > 0.0001:  # Moving right (positive direction)
+                directions.append('R')
+            else:
+                directions.append('0')
+
+        # Calculate distance from target mean for each motor
+        dist_from_mean = [abs(target_meters[i] - target_mean) for i in range(num_motors)]
+
+        # Build dependency graph using adjacency list
+        successors = [[] for _ in range(num_motors)]
+        indegree = [0] * num_motors
+
+        for i in range(num_motors):
+            for j in range(num_motors):
+                if i == j or directions[i] == '0' or directions[j] == '0':
+                    continue
+
+                # Check if motors are at nearly the same position
+                if abs(current_meters[i] - current_meters[j]) < 0.001:
+                    dist_i = dist_from_mean[i]
+                    dist_j = dist_from_mean[j]
+
+                    if is_spreading:
+                        # Spreading: prioritize motor going farther from center
+                        if dist_i > dist_j:
+                            successors[i].append(j)
+                            indegree[j] += 1
+                        elif dist_j > dist_i:
+                            successors[j].append(i)
+                            indegree[i] += 1
+                        # Equal distances: higher index for 'R', lower for 'L'
+                        elif directions[i] == 'R' and directions[j] == 'R' and i > j:
+                            successors[i].append(j)
+                            indegree[j] += 1
+                        elif directions[i] == 'L' and directions[j] == 'L' and i < j:
+                            successors[i].append(j)
+                            indegree[j] += 1
+                    else:
+                        # Converging: prioritize motor going closer to center
+                        if dist_i < dist_j:
+                            successors[i].append(j)
+                            indegree[j] += 1
+                        elif dist_j < dist_i:
+                            successors[j].append(i)
+                            indegree[i] += 1
+                        # Equal distances: use index priority
+                        elif directions[i] == 'R' and directions[j] == 'R' and i > j:
+                            successors[i].append(j)
+                            indegree[j] += 1
+                        elif directions[i] == 'L' and directions[j] == 'L' and i < j:
+                            successors[i].append(j)
+                            indegree[j] += 1
+                else:
+                    # Check for potential collision based on movement paths
+                    # Motor i moving right, j is in its path to target
+                    if (directions[i] == 'R' and
+                        current_meters[i] < current_meters[j] and
+                        target_meters[i] >= current_meters[j]):
+                        if is_spreading:
+                            successors[i].append(j)
+                            indegree[j] += 1
+                        else:
+                            successors[j].append(i)
+                            indegree[i] += 1
+                    # Motor i moving left, j is in its path to target
+                    elif (directions[i] == 'L' and
+                          current_meters[i] > current_meters[j] and
+                          target_meters[i] <= current_meters[j]):
+                        if is_spreading:
+                            successors[i].append(j)
+                            indegree[j] += 1
+                        else:
+                            successors[j].append(i)
+                            indegree[i] += 1
+
+        # Topological sort using Kahn's algorithm
+        queue = []
+        # Prioritize higher indices for moving motors (like C code)
+        for i in range(num_motors - 1, -1, -1):
+            if indegree[i] == 0 and directions[i] != '0':
+                queue.append(i)
+
+        order = []
+        while queue:
+            u = queue.pop(0)
+            order.append(u)
+            for v in successors[u]:
+                indegree[v] -= 1
+                if indegree[v] == 0:
+                    queue.append(v)
+
+        # Append non-moving motors at the end
+        for i in range(num_motors):
+            if directions[i] == '0' and i not in order:
+                order.append(i)
+
+        # Convert local indices back to slave indices
+        ordered_slaves = [slave_indices[i] for i in order]
+
+        # If topological sort failed (cycle detected), return original order
+        if len(ordered_slaves) != num_motors:
+            print(f"  [MOVE ORDER] Warning: cycle detected, using original order")
+            return ([sp[0] for sp in slave_positions], is_spreading)
+
+        print(f"  [MOVE ORDER] {'Spreading' if is_spreading else 'Converging'}: {ordered_slaves}")
+        return (ordered_slaves, is_spreading)
+
     def move_to_meters(self, idx, meters, trigger_immediate=True):
         """Move to position in meters"""
         target_scaled = int(meters * self.ACTUAL_STEPS_PER_METER)
@@ -1351,9 +1524,13 @@ class EtherCATController:
         self.set_target_velocity(idx, -speed)
     
     def velocity_stop(self, idx):
-        """Stop in PV mode"""
-        print(f"\n  [PV Mode] Slave {idx}: Stop")
+        """Stop in PV mode - stays enabled"""
+        print(f"\n  [PV Mode] Slave {idx}: STOP")
+
+        # Set velocity to 0 immediately
         self.set_target_velocity(idx, 0)
+
+        print(f"  Slave {idx} STOPPED (still enabled)")
 
     def clear_alarm_controlword(self, idx):
         """

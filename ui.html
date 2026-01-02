@@ -438,7 +438,7 @@
 
             <button class="btn btn-outline" onclick="sendCmd('reset')" style="margin-bottom:10px">Reset Fault</button>
             <button class="btn btn-danger" onclick="sendCmd('disable')" style="margin-bottom:10px">Disable Slaves</button>
-            <button class="btn btn-success" onclick="sendCmd('enable')">Enable Slaves</button>
+            <button class="btn btn-success" onclick="sendCmd('enable')" id="enableBtn">Enable Slaves</button>
 
             <hr>
 
@@ -653,10 +653,12 @@
                                 <th style="width: 80px;">Type</th>
                                 <th>Position</th>
                                 <th style="width: 60px;">Delay</th>
+                                <th style="width: 80px;">Time</th>
+                                <th style="width: 100px;">Order</th>
                             </tr>
                         </thead>
                         <tbody id="templateTableBody">
-                            <tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">Load a config file to see steps</td></tr>
+                            <tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">Load a config file to see steps</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -840,7 +842,7 @@
             } else {
                 window.lastFaultKey = null;  // Reset fault key
                 text.style.color = '';
-                
+
                 if (status.state === 0) {
                     dot.classList.add('disconnected');
                     text.textContent = 'Disconnected';
@@ -851,14 +853,32 @@
                     dot.classList.add('enabled');
                     text.textContent = 'Enabled';
                 }
-                
+
                 if (status.moving) {
                     dot.classList.remove('enabled', 'connected');
                     dot.classList.add('moving');
                     text.textContent += ' (Moving...)';
                 }
             }
-            
+
+            // Disable mode selector and enable button when faults are detected
+            const enableBtn = document.getElementById('enableBtn');
+            if (hasFault) {
+                modeSelector.disabled = true;
+                modeSelector.title = 'Clear faults first before changing mode';
+                if (enableBtn) {
+                    enableBtn.disabled = true;
+                    enableBtn.title = 'Clear faults first before enabling';
+                }
+            } else {
+                modeSelector.disabled = false;
+                modeSelector.title = '';
+                if (enableBtn) {
+                    enableBtn.disabled = false;
+                    enableBtn.title = '';
+                }
+            }
+
             // Update mode
             if (status.mode !== undefined) {
                 const modeNames = {1: 'PP', 3: 'PV', 8: 'CSP'};
@@ -1070,69 +1090,117 @@
             if (html) tbody.innerHTML = html;
         }
         
-        // Leadshine CS3E Error Code Table
-        // Maps SDO 0x603F values to drive display codes and descriptions
-        // From drive-error-list-leadshine.pdf
+        // Leadshine EL7-EC Error Code Table (synced with backend ethercat_controller.py)
+        // Maps SDO 0x603F values to drive display codes (Er###) and descriptions
+        // Based on Table 8.2 from EL7-EC_Series_AC_Servo_Drive_User_Manual_V1_00.pdf
         function getErrorInfo(code) {
-            // Map from 0x603F (IEC 61800) to display code (E###) and description
+            // Map from 0x603F (IEC 61800) to display code (Er###) and description
             const errorTable = {
-                // 0x603F Value: { display: 'E###', name: 'Name', desc: 'Description' }
-                0x2211: { display: 'E0e0', name: 'Over Current', desc: 'Current through power devices exceeds limit' },
-                0x3211: { display: 'E0c0', name: 'Over Voltage', desc: 'Bus voltage too high' },
-                0x3150: { display: 'E0a0', name: 'EEPROM Phase A', desc: 'EEPROM error in phase A' },
-                0x3151: { display: 'E0a1', name: 'EEPROM Phase B', desc: 'EEPROM error in phase B' },
-                0x5201: { display: 'E870', name: 'Mode Not Support', desc: 'Unsupported operation mode' },
-                0x5202: { display: 'E871', name: 'Mode Condition', desc: 'Operation condition not satisfied' },
-                0x5441: { display: 'E570', name: 'Quick Stop', desc: 'Quick stop alarm - safety relay not active' },
-                0x5510: { display: 'E802', name: 'Memory Overflow', desc: 'Out of memory' },
-                0x5530: { display: 'E240', name: 'Save Error', desc: 'EEPROM parameters saving error' },
-                0x5531: { display: 'E241', name: 'Save HW Error', desc: 'Saving module hardware error' },
-                0x5532: { display: 'E242', name: 'Diag Save Error', desc: 'Error/diagnosis record keeping error' },
-                0x5533: { display: 'E243', name: 'Signal Save Error', desc: 'Saving signals error' },
-                0x5534: { display: 'E244', name: 'Comm Save Error', desc: 'Communication parameters saving error' },
-                0x5535: { display: 'E245', name: 'Motion Save Error', desc: 'Motion parameters saving error' },
-                0x5550: { display: 'E850', name: 'EEPROM Read', desc: 'EEPROM reading error' },
-                0x5551: { display: 'E851', name: 'EEPROM Error', desc: 'EEPROM error' },
-                0x5552: { display: 'E852', name: 'HW Not Ready', desc: 'Hardware is not ready' },
-                0x7122: { display: 'E5f0', name: 'Auto-tune Error', desc: 'Auto-tuning error' },
-                0x7321: { display: 'E152', name: 'Encoder Wiring', desc: 'Encoder wiring error - motor not connected' },
-                0x7323: { display: 'E152', name: 'Encoder Init', desc: 'Initialize encoder position error' },
-                0x7329: { display: 'E260', name: 'Limit Switch', desc: 'Overtravel - limit switch activated' },
-                0x8201: { display: 'E801', name: 'ESM Failed', desc: 'ESM state machine transition failed' },
-                0x8207: { display: 'E807', name: 'Map Not Exist', desc: 'Mapping object does not exist' },
-                0x8208: { display: 'E808', name: 'PDO Length', desc: 'PDO mapping object length error' },
-                0x8209: { display: 'E809', name: 'PDO No Map', desc: 'PDO mapping object has no mapping attribute' },
-                0x8210: { display: 'E82b', name: 'Invalid I/O', desc: 'Invalid input and output' },
-                0x8211: { display: 'E818', name: 'Invalid Input', desc: 'No valid input data' },
-                0x8212: { display: 'E819', name: 'Invalid Output', desc: 'No valid output data' },
-                0x8213: { display: 'E813', name: 'Boot Protect', desc: 'Boot state request protection' },
-                0x8215: { display: 'E815', name: 'Boot Mailbox', desc: 'Invalid boot status mailbox config' },
-                0x8216: { display: 'E816', name: 'PreOp Mailbox', desc: 'Invalid pre-operation mailbox config' },
-                0x821B: { display: 'E81b', name: 'Watchdog', desc: 'Watchdog timeout - check network cable' },
-                0x821C: { display: 'E81c', name: 'Invalid SM Type', desc: 'Invalid sync manager type' },
-                0x821D: { display: 'E81d', name: 'Invalid Out Cfg', desc: 'Invalid output configuration' },
-                0x821E: { display: 'E81e', name: 'Invalid In Cfg', desc: 'Invalid input configuration' },
-                0x8224: { display: 'E824', name: 'Invalid In Map', desc: 'Invalid input data mapping' },
-                0x8225: { display: 'E825', name: 'Invalid Out Map', desc: 'Invalid output data mapping' },
-                0x8402: { display: 'E1a0', name: 'Over Speed', desc: 'Motor speed exceeds 3000 RPM' },
-                0x8611: { display: 'E180', name: 'Pos Following', desc: 'Position following error' },
-                0x8727: { display: 'E827', name: 'No Free Run', desc: 'Free running mode not supported' },
-                0x8728: { display: 'E828', name: 'No Sync Mode', desc: 'Synchronizing mode not supported' },
-                0x872C: { display: 'E82c', name: 'Fatal Sync', desc: 'Fatal synchronization error' },
-                0x872D: { display: 'E82d', name: 'Async Error', desc: 'Asynchronous error' },
-                0x872E: { display: 'E82e', name: 'Sync Too Short', desc: 'Synchronization period too small' },
-                0x8730: { display: 'E830', name: 'DC Sync Invalid', desc: 'DC synchronization config invalid' },
-                0x8732: { display: 'E832', name: 'DC PLL Fail', desc: 'DC phase-locked loop failure' },
-                0x8733: { display: 'E833', name: 'DC Sync IO', desc: 'DC sync IO error' },
-                0x8734: { display: 'E834', name: 'DC Sync Timeout', desc: 'DC synchronization timeout' },
-                0x8735: { display: 'E835', name: 'Invalid DC Cycle', desc: 'Invalid DC cycle' },
-                0x8736: { display: 'E836', name: 'DC Cycle Invalid', desc: 'Invalid DC synchronizing cycle' },
-                0xA001: { display: 'E811', name: 'Invalid ESM Req', desc: 'Invalid ESM conversion request' },
-                0xA002: { display: 'E812', name: 'Unknown ESM Req', desc: 'Unknown ESM conversion request' },
-                0xA003: { display: 'E821', name: 'ESM Init Wait', desc: 'Waiting for ESM initialization' },
-                0xA004: { display: 'E822', name: 'ESM PreOp Wait', desc: 'Waiting for ESM pre-operation' },
-                0xA005: { display: 'E823', name: 'ESM SafeOp Wait', desc: 'Waiting for ESM safe operation' },
-                0xFF02: { display: 'E81a', name: 'Sync Error', desc: 'Synchronizing error' }
+                // Current/Power errors (0x0A - 0x0E)
+                0x3150: { display: 'Er0A0', name: 'Phase A Current Error', desc: 'Phase A circuit current detection error' },
+                0x3151: { display: 'Er0A1', name: 'Phase B Current Error', desc: 'Phase B circuit current detection error' },
+                0x3153: { display: 'Er0A3', name: 'Motor Not Connected', desc: 'Motor power cable not connected' },
+                0x3206: { display: 'Er0b1', name: 'Control Overvoltage', desc: 'Control power supply voltage too high' },
+                0x3211: { display: 'Er0C0', name: 'DC Bus Overvoltage', desc: 'DC bus overvoltage' },
+                0x3221: { display: 'Er0d0', name: 'DC Bus Undervoltage', desc: 'DC bus undervoltage' },
+                0x3130: { display: 'Er0d1', name: 'Single Phase', desc: 'Single phasing of main power supply' },
+                0x3222: { display: 'Er0d2', name: 'No Main Power', desc: 'No main power supply detected' },
+                0x2211: { display: 'Er0E0', name: 'Overcurrent', desc: 'Overcurrent detected' },
+                0x2212: { display: 'Er0E1', name: 'IPM Overcurrent', desc: 'IPM overcurrent' },
+                0x2218: { display: 'Er0E2', name: 'Ground Short', desc: 'Power output to motor shorted to ground' },
+                0x2230: { display: 'Er0E4', name: 'Phase Overcurrent', desc: 'Phase overcurrent' },
+
+                // Thermal/Load errors (0x0F - 0x12)
+                0x4210: { display: 'Er0f0', name: 'Driver Overheat', desc: 'Driver overheated' },
+                0x8311: { display: 'Er100', name: 'Motor Overload', desc: 'Motor overloaded' },
+                0x8310: { display: 'Er101', name: 'Driver Overload', desc: 'Driver overloaded' },
+                0x8301: { display: 'Er102', name: 'Motor Blocked', desc: 'Motor rotor blocked' },
+                0x7701: { display: 'Er120', name: 'Regen Overvoltage', desc: 'Regenerative resistor overvoltage' },
+                0x7702: { display: 'Er121', name: 'Brake Error', desc: 'Holding brake error' },
+                0x7703: { display: 'Er122', name: 'Regen Resistance Low', desc: 'Regenerative resistor value too low' },
+
+                // Encoder errors (0x15 - 0x17)
+                0x7321: { display: 'Er150', name: 'Encoder Disconnected', desc: 'Encoder disconnected' },
+                0x7322: { display: 'Er151', name: 'Encoder Comm Error', desc: 'Encoder communication error' },
+                0x7323: { display: 'Er152', name: 'Encoder Init Error', desc: 'Encoder initial position error' },
+                0x7325: { display: 'Er153', name: 'Multiturn Error', desc: 'Multiturn encoder error (requires Pr0.15 to clear)' },
+                0x7326: { display: 'Er155', name: 'Encoder Overflow', desc: 'Encoder data overflow' },
+                0x7327: { display: 'Er156', name: 'Encoder Overheat', desc: 'Encoder overheated' },
+                0x7328: { display: 'Er157', name: 'Encoder Count Error', desc: 'Encoder count error' },
+                0x7324: { display: 'Er170', name: 'Encoder Data Error', desc: 'Encoder data error' },
+
+                // Motion errors (0x18 - 0x1C)
+                0x8611: { display: 'Er180', name: 'Position Deviation', desc: 'Excessive position deviation' },
+                0x8401: { display: 'Er190', name: 'Motor Vibration', desc: 'Motor vibration too strong' },
+                0x8402: { display: 'Er1A0', name: 'Overspeed', desc: 'Overspeed detected' },
+                0x8403: { display: 'Er1A1', name: 'Velocity Out of Control', desc: 'Velocity out of control' },
+                0x8612: { display: 'Er1b0', name: 'Bus Signal Dither', desc: 'Bus input signal dithering' },
+                0x8503: { display: 'Er1b1', name: 'Gear Ratio Error', desc: 'Incorrect electronic gear ratio' },
+                0x8313: { display: 'Er1c0', name: 'STO Failed', desc: 'STO failed' },
+
+                // I/O errors (0x21)
+                0x6321: { display: 'Er210', name: 'I/O Input Assign Error', desc: 'I/O input interface assignment error' },
+                0x6322: { display: 'Er211', name: 'I/O Input Func Error', desc: 'I/O input interface function assignment error' },
+                0x6323: { display: 'Er212', name: 'I/O Output Func Error', desc: 'I/O output interface function assignment error' },
+
+                // EEPROM errors (0x24)
+                0x5530: { display: 'Er240', name: 'EEPROM Init Error', desc: 'EEPROM parameters initialization error' },
+                0x5531: { display: 'Er241', name: 'EEPROM HW Error', desc: 'EEPROM hardware error' },
+                0x5532: { display: 'Er242', name: 'Alarm History Error', desc: 'Error saving alarm history record' },
+                0x5533: { display: 'Er243', name: 'Vendor Param Error', desc: 'Error saving vendor parameters' },
+                0x5534: { display: 'Er244', name: 'Comm Param Error', desc: 'Error saving communication parameters' },
+                0x5535: { display: 'Er245', name: 'Param 402 Error', desc: 'Error saving parameter 402' },
+                0x5536: { display: 'Er246', name: 'Power-off Save Error', desc: 'Data saving error during power-off' },
+
+                // Position/Other errors (0x26 - 0x28)
+                0x7329: { display: 'Er260', name: 'Limit Triggered', desc: 'Positive/Negative limit triggered' },
+                0x7201: { display: 'Er280', name: 'Pulse Freq Too High', desc: 'Output pulse frequency too high' },
+
+                // Special errors (0x5 - 0x7)
+                0x5441: { display: 'Er570', name: 'Quick Stop', desc: 'Forced alarm input valid (Quick Stop)' },
+                0x7122: { display: 'Er5f0', name: 'Motor Detection Error', desc: 'Motor model detection error' },
+                0x1100: { display: 'Er5f1', name: 'Power Module Error', desc: 'Driver power module detection error' },
+                0x6204: { display: 'Er600', name: 'Loop Timeout', desc: 'Main/velocity loop interrupted timeout' },
+                0x7001: { display: 'Er700', name: 'Encryption Error', desc: 'Encryption error' },
+
+                // EtherCAT sync errors (0x73)
+                0x873A: { display: 'Er73A', name: 'SM2 Lost', desc: 'SyncManager2 lost' },
+                0x873B: { display: 'Er73b', name: 'SYNC0 Lost', desc: 'SYNC0 lost' },
+                0x873C: { display: 'Er73c', name: 'DC Error', desc: 'Excessive Distributed Clock error' },
+
+                // EtherCAT communication errors (0x80 - 0x8)
+                0x8201: { display: 'Er801', name: 'Unknown Comm Error', desc: 'Unknown communication error' },
+                0x5510: { display: 'Er802', name: 'Memory Overflow', desc: 'Memory overflow' },
+                0x5511: { display: 'Er803', name: 'RAM Out of Bound', desc: 'RAM out of bound' },
+                0x6202: { display: 'Er805', name: 'FOE Upgrade Failed', desc: 'FOE firmware upgrade failed' },
+                0x6201: { display: 'Er806', name: 'ESI Mismatch', desc: 'ESI file mismatch' },
+                0xA001: { display: 'Er811', name: 'Invalid ESM Request', desc: 'Invalid EtherCAT transition request' },
+                0xA002: { display: 'Er812', name: 'Unknown ESM Request', desc: 'Unknown EtherCAT transition request' },
+                0x8213: { display: 'Er813', name: 'Boot Protection', desc: 'Protection request from boot state' },
+                0x6203: { display: 'Er814', name: 'Invalid Boot Config', desc: 'Invalid boot configuration' },
+                0x8215: { display: 'Er815', name: 'Boot Mailbox Error', desc: 'Invalid mailbox configuration (boot)' },
+                0x8216: { display: 'Er816', name: 'PreOp Mailbox Error', desc: 'Invalid mailbox configuration (pre-op)' },
+                0x8217: { display: 'Er817', name: 'Invalid SM Config', desc: 'Invalid SyncManager configuration' },
+                0x8211: { display: 'Er818', name: 'No Valid Input', desc: 'No valid input data' },
+                0x8212: { display: 'Er819', name: 'No Valid Output', desc: 'No valid output data' },
+                0xFF02: { display: 'Er81A', name: 'Sync Error', desc: 'Synchronization error' },
+                0x821B: { display: 'Er81b', name: 'Watchdog Timeout', desc: 'SyncManager2 watchdog timeout - check network cable' },
+                0x821C: { display: 'Er81C', name: 'Invalid SM Type', desc: 'Invalid SyncManager type' },
+                0x821D: { display: 'Er81d', name: 'Invalid Output Config', desc: 'Invalid output configuration' },
+                0x821E: { display: 'Er81E', name: 'Invalid Input Config', desc: 'Invalid input configuration' },
+                0x8224: { display: 'Er824', name: 'Invalid Input Map', desc: 'Invalid input mapping' },
+                0x8225: { display: 'Er825', name: 'Invalid Output Map', desc: 'Invalid output mapping' },
+                0x8728: { display: 'Er828', name: 'Sync Mode Not Supported', desc: 'Sync mode not supported' },
+                0x872C: { display: 'Er82c', name: 'Fatal Sync Error', desc: 'Fatal sync error (DC watchdog)' },
+                0x872D: { display: 'Er82d', name: 'No Sync Error', desc: 'No sync error' },
+                0x872E: { display: 'Er82E', name: 'Sync Cycle Too Short', desc: 'Sync cycle too short' },
+                0x8730: { display: 'Er830', name: 'Invalid DC Sync', desc: 'Invalid DC sync settings' },
+                0x8732: { display: 'Er832', name: 'DC PLL Failure', desc: 'DC PLL failure' },
+                0x8735: { display: 'Er835', name: 'DC Cycle Invalid', desc: 'DC cycle time invalid' },
+                0x8736: { display: 'Er836', name: 'Invalid DC Sync Cycle', desc: 'Invalid DC sync cycle time' },
+                0x5550: { display: 'Er850', name: 'EEPROM Inaccessible', desc: 'EEPROM inaccessible' },
+                0x5551: { display: 'Er851', name: 'EEPROM Error', desc: 'EEPROM error' },
+                0x5552: { display: 'Er852', name: 'Hardware Not Ready', desc: 'Hardware not ready' }
             };
 
             // Try to find in table by 0x603F code
@@ -1140,14 +1208,14 @@
                 return errorTable[code];
             }
 
-            // Unknown error - generate display code from hex
-            return { display: 'E' + code.toString(16), name: 'Error', desc: 'Unknown error code' };
+            // Unknown error - generate Er format from hex (matching backend format)
+            return { display: 'Er' + code.toString(16).toUpperCase().padStart(3, '0'), name: 'Unknown Error', desc: 'Unknown error code: 0x' + code.toString(16).toUpperCase() };
         }
 
-        // Convert 0x603F code to drive display format (E### as shown on physical drive)
+        // Convert 0x603F code to drive display format (Er### as shown on physical drive)
         function getDriveDisplayCode(code) {
             const info = getErrorInfo(code);
-            return info.display || ('E' + code.toString(16));
+            return info.display || ('Er' + code.toString(16).toUpperCase().padStart(3, '0'));
         }
 
         // Update slave selector dropdown
@@ -1285,6 +1353,32 @@
             if (resp.data && resp.data.template_step) {
                 const step = resp.data.template_step;
                 templateLog(`[${step.index}/${step.total}] ${step.name} (${step.type})`, 'step');
+
+                // Handle step timing events
+                if (step.event === 'start') {
+                    startStepTimer(step.index);
+                    // Update move order display for this step
+                    if (step.move_order && step.move_order.length > 0) {
+                        updateStepMoveOrder(step.index, step.move_order, step.is_spreading);
+                    }
+                } else if (step.event === 'complete') {
+                    completeStepTimer(step.index, step.time_taken || 0);
+                }
+            }
+
+            // Handle template start event (reset timings)
+            if (resp.data && resp.data.template_start) {
+                resetStepTimings();
+                templateLog('▶ Template started', 'config');
+            }
+
+            // Handle template complete event
+            if (resp.data && resp.data.template_complete) {
+                stopStepTimer();
+                const total = resp.data.template_complete.total_time;
+                if (total) {
+                    templateLog(`✓ Template complete (Total: ${total.toFixed(1)}s)`, 'complete');
+                }
             }
 
             if (resp.data && resp.data.template_move) {
@@ -1317,59 +1411,207 @@
         
         // Store loaded config globally for template execution
         let loadedConfig = null;
-        
+
+        // Template step timing tracking
+        let stepTimings = {};  // { stepIndex: { startTime, endTime, elapsed } }
+        let currentStepIndex = null;
+        let stepTimerInterval = null;
+
         // Update template display as table
         function updateTemplateDisplay(template, positions) {
             const nameEl = document.getElementById('templateName');
             const tbody = document.getElementById('templateTableBody');
-            
+
             if (!template || !template.steps || template.steps.length === 0) {
                 nameEl.textContent = 'No template loaded';
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">Load a config file to see steps</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">Load a config file to see steps</td></tr>';
                 return;
             }
-            
+
             const opMode = template.operation_mode || 'both';
             nameEl.innerHTML = `${template.name || 'SEQUENCE'} <span style="color: var(--text-secondary); font-size: 0.8rem;">(${opMode} | Loop: ${template.loop || false}, Count: ${template.loop_count || 1})</span>`;
-            
+
             let html = '';
             template.steps.forEach((step, i) => {
                 const stepType = step.type || 'all';
-                
+
                 // Resolve position reference
                 let positionDisplay = '—';
                 const posRef = step.position;
                 const posRotRef = step.position_rotation;
-                
+
                 if (posRef && positions && positions[posRef]) {
                     positionDisplay = `[${positions[posRef].join(', ')}]`;
                 } else if (posRef) {
                     positionDisplay = posRef;
                 }
-                
+
                 // For 'all' type, show both positions
                 if (stepType === 'all' && posRotRef && positions && positions[posRotRef]) {
                     positionDisplay += ` / [${positions[posRotRef].join(', ')}]`;
                 } else if (stepType === 'all' && posRotRef) {
                     positionDisplay += ` / ${posRotRef}`;
                 }
-                
-                const typeColor = stepType === 'movement' ? 'var(--accent-green)' : 
-                                  stepType === 'rotation' ? 'var(--accent-blue)' : 
+
+                const typeColor = stepType === 'movement' ? 'var(--accent-green)' :
+                                  stepType === 'rotation' ? 'var(--accent-blue)' :
                                   stepType === 'home' ? 'var(--accent-red)' : 'var(--text-gold)';
                 const typeLabel = stepType.charAt(0).toUpperCase() + stepType.slice(1);
-                
-                html += `<tr>
+
+                // Get timing info if available
+                const timing = stepTimings[i + 1];
+                let timeDisplay = '—';
+                let timeColor = 'var(--text-secondary)';
+                if (timing) {
+                    if (timing.elapsed !== undefined) {
+                        timeDisplay = timing.elapsed.toFixed(1) + 's';
+                        timeColor = 'var(--accent-green)';
+                    }
+                }
+
+                html += `<tr id="step-row-${i + 1}">
                     <td>${i + 1}</td>
                     <td>${step.name || 'Step'}</td>
                     <td style="color: ${typeColor};">${typeLabel}</td>
                     <td>${positionDisplay}</td>
                     <td>${step.delay || 0}s</td>
+                    <td id="step-time-${i + 1}" style="color: ${timeColor}; font-weight: bold;">${timeDisplay}</td>
+                    <td id="step-order-${i + 1}" style="color: var(--text-secondary); font-size: 0.75rem;">—</td>
                 </tr>`;
             });
             tbody.innerHTML = html;
-            
+
             log(`Template: ${template.name} (${template.steps.length} steps)`, 'sys');
+        }
+
+        // Start tracking time for a step
+        function startStepTimer(stepIndex) {
+            // Stop previous timer if any
+            stopStepTimer();
+
+            currentStepIndex = stepIndex;
+            stepTimings[stepIndex] = { startTime: Date.now(), elapsed: 0 };
+
+            // Highlight current step row
+            const row = document.getElementById(`step-row-${stepIndex}`);
+            if (row) {
+                row.style.background = 'rgba(88, 166, 255, 0.15)';
+                row.style.borderLeft = '3px solid var(--accent-blue)';
+            }
+
+            // Update time cell to show running
+            const timeCell = document.getElementById(`step-time-${stepIndex}`);
+            if (timeCell) {
+                timeCell.style.color = 'var(--accent-blue)';
+                timeCell.textContent = '0.0s';
+            }
+
+            // Start real-time timer update
+            stepTimerInterval = setInterval(() => {
+                if (stepTimings[stepIndex]) {
+                    const elapsed = (Date.now() - stepTimings[stepIndex].startTime) / 1000;
+                    stepTimings[stepIndex].elapsed = elapsed;
+
+                    const timeCell = document.getElementById(`step-time-${stepIndex}`);
+                    if (timeCell) {
+                        timeCell.textContent = elapsed.toFixed(1) + 's';
+                    }
+                }
+            }, 100);  // Update every 100ms
+        }
+
+        // Stop the current step timer
+        function stopStepTimer() {
+            if (stepTimerInterval) {
+                clearInterval(stepTimerInterval);
+                stepTimerInterval = null;
+            }
+
+            if (currentStepIndex) {
+                // Remove highlight from previous step
+                const row = document.getElementById(`step-row-${currentStepIndex}`);
+                if (row) {
+                    row.style.background = '';
+                    row.style.borderLeft = '';
+                }
+            }
+        }
+
+        // Complete a step and record final time
+        function completeStepTimer(stepIndex, totalTime) {
+            stopStepTimer();
+
+            if (stepTimings[stepIndex]) {
+                stepTimings[stepIndex].elapsed = totalTime;
+            } else {
+                stepTimings[stepIndex] = { elapsed: totalTime };
+            }
+
+            // Update time cell with final value
+            const timeCell = document.getElementById(`step-time-${stepIndex}`);
+            if (timeCell) {
+                timeCell.style.color = 'var(--accent-green)';
+                timeCell.textContent = totalTime.toFixed(1) + 's';
+            }
+
+            // Mark row as completed
+            const row = document.getElementById(`step-row-${stepIndex}`);
+            if (row) {
+                row.style.background = 'rgba(63, 185, 80, 0.1)';
+                row.style.borderLeft = '3px solid var(--accent-green)';
+            }
+
+            currentStepIndex = null;
+        }
+
+        // Reset all step timings (when starting new template run)
+        function resetStepTimings() {
+            stopStepTimer();
+            stepTimings = {};
+            currentStepIndex = null;
+
+            // Reset all row styles and time/order displays
+            const tbody = document.getElementById('templateTableBody');
+            if (tbody) {
+                const rows = tbody.querySelectorAll('tr[id^="step-row-"]');
+                rows.forEach(row => {
+                    row.style.background = '';
+                    row.style.borderLeft = '';
+                });
+
+                const timeCells = tbody.querySelectorAll('td[id^="step-time-"]');
+                timeCells.forEach(cell => {
+                    cell.style.color = 'var(--text-secondary)';
+                    cell.textContent = '—';
+                });
+
+                // Reset order cells
+                const orderCells = tbody.querySelectorAll('td[id^="step-order-"]');
+                orderCells.forEach(cell => {
+                    cell.style.color = 'var(--text-secondary)';
+                    cell.textContent = '—';
+                });
+            }
+        }
+
+        // Update move order display for a step (only for movement slaves)
+        function updateStepMoveOrder(stepIndex, moveOrder, isSpreading) {
+            const orderCell = document.getElementById(`step-order-${stepIndex}`);
+            if (!orderCell) return;
+
+            if (!moveOrder || moveOrder.length === 0) {
+                orderCell.textContent = '—';
+                orderCell.style.color = 'var(--text-secondary)';
+                return;
+            }
+
+            // Format: "0→1→2→3" with spreading/converging indicator
+            const orderStr = moveOrder.map(s => s + 1).join('→');
+            const indicator = isSpreading ? '↔' : '→←';  // Spreading or converging symbol
+
+            orderCell.innerHTML = `<span style="color: ${isSpreading ? 'var(--accent-blue)' : 'var(--accent-green)'};">${indicator}</span> ${orderStr}`;
+            orderCell.style.color = 'var(--text-primary)';
+            orderCell.title = isSpreading ? 'Spreading (moving apart)' : 'Converging (moving together)';
         }
         
         // Update config info display

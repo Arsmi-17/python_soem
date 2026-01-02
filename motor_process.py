@@ -743,7 +743,17 @@ class MotorProcess:
                         break
                     
                     elif cmd == MotorProcess.CMD_ENABLE:
-                        if ec.enable_all():
+                        # Check for faults before enabling
+                        fault_slaves = []
+                        for i in range(ec.slaves_count):
+                            if ec.has_fault(i):
+                                error_code = ec.read_error_code(i)
+                                error_name = ec.get_error_name(error_code)
+                                fault_slaves.append(f"Slave {i}: {error_name}")
+
+                        if fault_slaves:
+                            send_response(False, f"Cannot enable - faults detected: {', '.join(fault_slaves)}. Clear errors first.")
+                        elif ec.enable_all():
                             shared_state.value = 2
                             send_response(True, "Drives enabled")
                         else:
@@ -815,11 +825,22 @@ class MotorProcess:
                     
                     elif cmd == MotorProcess.CMD_SET_MODE:
                         if data:
-                            mode = data.get('mode', 8)
-                            ec.set_mode(mode)
-                            shared_mode.value = mode
-                            mode_names = {1: 'PP', 3: 'PV', 8: 'CSP'}
-                            send_response(True, f"Mode set to {mode_names.get(mode, mode)}")
+                            # Check for faults before changing mode
+                            fault_slaves = []
+                            for i in range(ec.slaves_count):
+                                if ec.has_fault(i):
+                                    error_code = ec.read_error_code(i)
+                                    error_name = ec.get_error_name(error_code)
+                                    fault_slaves.append(f"Slave {i}: {error_name}")
+
+                            if fault_slaves:
+                                send_response(False, f"Cannot change mode - faults detected: {', '.join(fault_slaves)}. Clear errors first.")
+                            else:
+                                mode = data.get('mode', 8)
+                                ec.set_mode(mode)
+                                shared_mode.value = mode
+                                mode_names = {1: 'PP', 3: 'PV', 8: 'CSP'}
+                                send_response(True, f"Mode set to {mode_names.get(mode, mode)}")
                     
                     elif cmd == 'velocity_forward':
                         if data:
@@ -1106,15 +1127,19 @@ class MotorProcess:
                             filename = data.get('filename', 'config.json')
                         else:
                             filename = 'config.json'
-                        
+
                         import json
                         import os
-                        
-                        # Try multiple paths
+
+                        # Try multiple paths (json folder first)
+                        base_dir = os.path.dirname(os.path.abspath(__file__))
+                        json_dir = os.path.join(base_dir, 'json')
                         possible_paths = [
+                            os.path.join(json_dir, filename),
+                            os.path.join(json_dir, os.path.basename(filename)),
                             filename,
                             os.path.join(os.getcwd(), filename),
-                            os.path.join(os.path.dirname(__file__), filename) if '__file__' in dir() else None,
+                            os.path.join(base_dir, filename),
                         ]
                         
                         config_path = None
@@ -1169,16 +1194,22 @@ class MotorProcess:
                         # If no config from UI, load from file
                         if not config:
                             config_path = None
+                            base_dir = os.path.dirname(os.path.abspath(__file__))
+                            json_dir = os.path.join(base_dir, 'json')
 
                             # If filename was specified, try that first
                             if config_filename:
                                 possible_paths = [
+                                    os.path.join(json_dir, config_filename),
+                                    os.path.join(json_dir, os.path.basename(config_filename)),
                                     config_filename,
                                     os.path.join(os.getcwd(), config_filename),
                                 ]
                             else:
-                                # Default search order
+                                # Default search order (json folder first)
                                 possible_paths = [
+                                    os.path.join(json_dir, 'config_both.json'),
+                                    os.path.join(json_dir, 'config.json'),
                                     'config_both.json',
                                     'config.json',
                                     os.path.join(os.getcwd(), 'config_both.json'),
@@ -1268,13 +1299,23 @@ class MotorProcess:
                         print(f"  Movement slaves: {movement_slaves}")
                         print(f"  Rotation slaves: {rotation_slaves}")
                         print(f"  Steps: {len(steps)}, Loop: {loop}, Count: {loop_count if not loop_mode else 'Infinite'}")
-                        
+
                         if movement_speed:
                             print(f"  Movement speed: vel={movement_speed.get('velocity')}, accel={movement_speed.get('acceleration')}")
                         if rotation_speed:
                             print(f"  Rotation speed: vel={rotation_speed.get('velocity')}, accel={rotation_speed.get('acceleration')}")
-                        
-                        send_response(True, f"Running template: {len(steps)} steps (Loop: {loop_mode or loop})")
+
+                        # Track template start time
+                        template_start_time = time.time()
+
+                        # Send template start notification (triggers UI to reset timings)
+                        send_response(True, f"Running template: {len(steps)} steps (Loop: {loop_mode or loop})", {
+                            'template_start': {
+                                'name': template.get('name', 'Unnamed'),
+                                'steps': len(steps),
+                                'loop': loop_mode or loop
+                            }
+                        })
                         shared_moving.value = 1
                         
                         try:
@@ -1323,19 +1364,13 @@ class MotorProcess:
                                     pos_rot_values = positions.get(pos_rot_ref, []) if pos_rot_ref else []
                                     
                                     print(f"\n  [{step_idx + 1}/{len(steps)}] {name} (type: {step_type})")
-                                    
-                                    # Send step start notification
-                                    send_response(True, f"Executing: {name}", {
-                                        'template_step': {
-                                            'index': step_idx + 1,
-                                            'total': len(steps),
-                                            'name': name,
-                                            'type': step_type
-                                        }
-                                    })
-                                    
+
+                                    # Track step start time
+                                    step_start_time = time.time()
+
                                     # Collect all slave positions for SIMULTANEOUS movement
                                     slave_positions = []  # List of (slave_idx, position)
+                                    movement_slave_positions = []  # Only movement slaves for move order calc
                                     moving_slaves = []
 
                                     # Handle 'home' type - move all slaves to home positions
@@ -1347,6 +1382,7 @@ class MotorProcess:
                                                 pos = home_m[i] if i < len(home_m) else 0
                                                 print(f"    Movement Slave {slave_idx} -> {pos} (home)")
                                                 slave_positions.append((slave_idx, pos))
+                                                movement_slave_positions.append((slave_idx, pos))
                                                 moving_slaves.append(slave_idx)
 
                                         # Collect rotation slaves home positions
@@ -1366,6 +1402,7 @@ class MotorProcess:
                                                 if slave_idx < ec.slaves_count:
                                                     print(f"    Movement Slave {slave_idx} -> {pos}")
                                                     slave_positions.append((slave_idx, pos))
+                                                    movement_slave_positions.append((slave_idx, pos))
                                                     moving_slaves.append(slave_idx)
 
                                     # Handle rotation positions (can be combined with movement in 'all' type)
@@ -1379,6 +1416,28 @@ class MotorProcess:
                                                     slave_positions.append((slave_idx, pos))
                                                     if slave_idx not in moving_slaves:
                                                         moving_slaves.append(slave_idx)
+
+                                    # Calculate move order for movement slaves only
+                                    move_order = []
+                                    is_spreading = False
+                                    if movement_slave_positions and len(movement_slave_positions) > 1:
+                                        move_order, is_spreading = ec.calculate_move_order(movement_slave_positions)
+                                        print(f"    Move order: {move_order} ({'Spreading' if is_spreading else 'Converging'})")
+                                    elif movement_slave_positions:
+                                        move_order = [movement_slave_positions[0][0]]
+
+                                    # Send step start notification with move order
+                                    send_response(True, f"Executing: {name}", {
+                                        'template_step': {
+                                            'index': step_idx + 1,
+                                            'total': len(steps),
+                                            'name': name,
+                                            'type': step_type,
+                                            'event': 'start',
+                                            'move_order': move_order,
+                                            'is_spreading': is_spreading
+                                        }
+                                    })
 
                                     # Execute SIMULTANEOUS movement for all collected positions
                                     if slave_positions:
@@ -1411,7 +1470,23 @@ class MotorProcess:
                                             # Update positions during delay
                                             update_shared_status()
                                             time.sleep(0.1)
-                                    
+
+                                    # Calculate step time and send complete notification
+                                    step_time_taken = time.time() - step_start_time
+                                    print(f"    Step completed in {step_time_taken:.1f}s")
+
+                                    # Send step complete notification
+                                    send_response(True, f"Completed: {name} ({step_time_taken:.1f}s)", {
+                                        'template_step': {
+                                            'index': step_idx + 1,
+                                            'total': len(steps),
+                                            'name': name,
+                                            'type': step_type,
+                                            'event': 'complete',
+                                            'time_taken': step_time_taken
+                                        }
+                                    })
+
                                     if shared_stop.value == 1:
                                         break
                                 
@@ -1442,6 +1517,9 @@ class MotorProcess:
                         if cleared_count > 0:
                             print(f"[Template] Cleared {cleared_count} queued commands")
 
+                        # Calculate total template time
+                        template_total_time = time.time() - template_start_time
+
                         if shared_stop.value == 1:
                             # Check if stopped due to fault
                             fault_msg = None
@@ -1457,7 +1535,13 @@ class MotorProcess:
                             shared_stop.value = 0  # Reset stop flag
                             send_response(True, fault_msg if fault_msg else "Template stopped by user")
                         else:
-                            send_response(True, "Template complete")
+                            # Send template complete with total time
+                            print(f"\n[Template] Complete in {template_total_time:.1f}s")
+                            send_response(True, f"Template complete ({template_total_time:.1f}s)", {
+                                'template_complete': {
+                                    'total_time': template_total_time
+                                }
+                            })
                 
                 except:
                     pass  # Queue empty, continue
