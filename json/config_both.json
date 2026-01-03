@@ -32,6 +32,8 @@
         "loop": false,
         "loop_count": 1,
         "operation_mode": "both",
+        "is_simultaneous": true,
+        "slave_delay_ms": 10,
         "steps": [
             {
                 "name": "Home All",

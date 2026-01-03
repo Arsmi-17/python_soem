@@ -1668,7 +1668,16 @@ class MotorProcess:
                         loop_mode = (cmd == MotorProcess.CMD_TEMPLATE_LOOP)
                         loop = loop_mode or template.get('loop', False)
                         loop_count = template.get('loop_count', 1)
-                        
+
+                        # Global staggered movement settings (default: simultaneous)
+                        is_simultaneous = template.get('is_simultaneous', True)
+                        slave_delay_ms = template.get('slave_delay_ms', 10)
+
+                        # Debug: Print template keys to verify parsing
+                        print(f"  [DEBUG] Template keys: {list(template.keys())}")
+                        print(f"  [DEBUG] is_simultaneous from template: {template.get('is_simultaneous', 'NOT FOUND')}")
+                        print(f"  [DEBUG] slave_delay_ms from template: {template.get('slave_delay_ms', 'NOT FOUND')}")
+
                         # DON'T clear stop flag here - if user already pressed stop, respect it
                         if shared_stop.value == 1:
                             print("[Template] Stop flag already set - not starting template")
@@ -1680,6 +1689,7 @@ class MotorProcess:
                         print(f"  Movement slaves: {movement_slaves}")
                         print(f"  Rotation slaves: {rotation_slaves}")
                         print(f"  Steps: {len(steps)}, Loop: {loop}, Count: {loop_count if not loop_mode else 'Infinite'}")
+                        print(f"  Simultaneous: {is_simultaneous}" + (f", Slave delay: {slave_delay_ms}ms" if not is_simultaneous else ""))
 
                         if movement_speed:
                             print(f"  Movement speed: vel={movement_speed.get('velocity')}, accel={movement_speed.get('acceleration')}")
@@ -1735,7 +1745,7 @@ class MotorProcess:
                                     step_type = step.get('type', 'all')
                                     delay = step.get('delay', 1.0)
                                     name = step.get('name', f'Step {step_idx + 1}')
-                                    
+
                                     # Get position reference
                                     pos_ref = step.get('position')
                                     pos_rot_ref = step.get('position_rotation')
@@ -1801,8 +1811,9 @@ class MotorProcess:
                                     # Calculate move order for movement slaves only
                                     move_order = []
                                     is_spreading = False
+                                    move_order_details = None
                                     if movement_slave_positions and len(movement_slave_positions) > 1:
-                                        move_order, is_spreading = ec.calculate_move_order(movement_slave_positions)
+                                        move_order, is_spreading, move_order_details = ec.calculate_move_order(movement_slave_positions, return_details=True)
                                         print(f"    Move order: {move_order} ({'Spreading' if is_spreading else 'Converging'})")
                                     elif movement_slave_positions:
                                         move_order = [movement_slave_positions[0][0]]
@@ -1810,8 +1821,8 @@ class MotorProcess:
                                     # Send OSC notification BEFORE step starts (1-indexed)
                                     osc_send_template_step(step_idx + 1)
 
-                                    # Send step start notification with move order
-                                    send_response(True, f"Executing: {name}", {
+                                    # Send step start notification with move order and details
+                                    step_data = {
                                         'template_step': {
                                             'index': step_idx + 1,
                                             'total': len(steps),
@@ -1819,19 +1830,32 @@ class MotorProcess:
                                             'type': step_type,
                                             'event': 'start',
                                             'move_order': move_order,
-                                            'is_spreading': is_spreading
+                                            'is_spreading': is_spreading,
+                                            'moving_slaves': moving_slaves,  # All slaves moving in this step
+                                            'is_simultaneous': is_simultaneous,
+                                            'slave_delay_ms': slave_delay_ms
                                         }
-                                    })
+                                    }
+                                    if move_order_details:
+                                        step_data['template_step']['order_details'] = move_order_details
+                                    send_response(True, f"Executing: {name}", step_data)
 
-                                    # Execute SIMULTANEOUS movement for all collected positions
+                                    # Execute movement for all collected positions
                                     if slave_positions:
-                                        print(f"    Starting SIMULTANEOUS move for {len(slave_positions)} slaves...")
+                                        # Debug: Print movement mode before execution
+                                        print(f"    [DEBUG] About to call move_multiple_to_meters with simultaneous={is_simultaneous}, slave_delay_ms={slave_delay_ms}")
+                                        if is_simultaneous:
+                                            print(f"    Starting SIMULTANEOUS move for {len(slave_positions)} slaves...")
+                                        else:
+                                            print(f"    Starting STAGGERED move for {len(slave_positions)} slaves (delay: {slave_delay_ms}ms)...")
+                                            print(f"    Using move order: {[s+1 for s in move_order]}")
 
                                         # OSC notifications for each slave move (currently disabled)
                                         # for slave_idx, pos in slave_positions:
                                         #     osc_send_slave_move(slave_idx, pos)
 
-                                        ec.move_multiple_to_meters(slave_positions)
+                                        # Pass move_order for staggered movement to ensure correct sequence
+                                        ec.move_multiple_to_meters(slave_positions, simultaneous=is_simultaneous, slave_delay_ms=slave_delay_ms, move_order=move_order)
 
                                         # Wait for all slaves to reach target
                                         print(f"    Waiting for slaves {moving_slaves} to reach target...")

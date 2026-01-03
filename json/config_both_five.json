@@ -29,36 +29,20 @@
         "loop": false,
         "loop_count": 1,
         "operation_mode": "movement",
+        "is_simultaneous": false,
+        "slave_delay_ms": 1200,
         "steps": [
-            {
-                "name": "Home All",
-                "type": "home",
-                "position": "home_pos_M",
-                "delay": 2
-            },
             {
                 "name": "Move to Position 1",
                 "type": "movement",
                 "position": "pos_1",
-                "delay": 9.5
-            },
-            {
-                "name": "Home All",
-                "type": "home",
-                "position": "home_pos_M",
-                "delay": 2.5
+                "delay": 1
             },
             {
                 "name": "Move to Position 2",
                 "type": "movement",
                 "position": "pos_2",
-                "delay": 7
-            },
-            {
-                "name": "Home All",
-                "type": "home",
-                "position": "home_pos_M",
-                "delay": 2.7
+                "delay": 1
             }
         ]
     }

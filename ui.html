@@ -637,6 +637,10 @@
                             <div class="config-label">Rotation Speed:</div>
                             <div id="cfgRotationSpeed">--</div>
                         </div>
+                        <div style="grid-column: span 2;">
+                            <div class="config-label">Movement Mode:</div>
+                            <div id="cfgMovementMode" style="color: var(--accent-green);">--</div>
+                        </div>
                     </div>
                 </div>
                 
@@ -800,6 +804,11 @@
             <h2 style="margin-top: 20px; border-color: var(--text-gold); color: var(--text-gold);">Template Log</h2>
             <div id="template-log-window" style="height: 200px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border-ui); border-radius: 4px; padding: 10px; font-family: monospace; font-size: 0.8rem;"></div>
             <button class="btn btn-outline" onclick="clearTemplateLogs()" style="margin-top: 10px;">Clear Template Log</button>
+
+            <!-- Move Order Log -->
+            <h2 style="margin-top: 20px; border-color: var(--accent-blue); color: var(--accent-blue);">Move Order Log</h2>
+            <div id="move-order-log-window" style="height: 180px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border-ui); border-radius: 4px; padding: 10px; font-family: monospace; font-size: 0.75rem; white-space: pre-wrap;"></div>
+            <button class="btn btn-outline" onclick="clearMoveOrderLog()" style="margin-top: 10px;">Clear Move Order Log</button>
         </aside>
     </div>
 
@@ -1196,13 +1205,17 @@
             }
         }
 
+        // Track currently moving slaves for highlighting
+        let currentMovingSlaves = [];
+        let currentMoveOrder = [];
+
         // Update position table
         function updatePositionTable(status) {
             const tbody = document.getElementById('positionTable');
             const positions = status.positions || [];
             const statusWords = status.status_words || [];
             const errorCodes = status.error_codes || [];
-            
+
             let html = '';
             for (let i = 0; i < positions.length; i++) {
                 const pos = positions[i].toFixed(4);
@@ -1210,10 +1223,15 @@
                 const errorCode = errorCodes[i] || 0;
                 const enabled = (sw & 0x006F) === 0x0027;
                 const fault = (sw & 0x0008) !== 0;
-                
+
+                // Check if this slave is currently moving
+                const isMoving = currentMovingSlaves.includes(i);
+                const moveOrderIndex = currentMoveOrder.indexOf(i);
+                const orderBadge = moveOrderIndex >= 0 ? `<span style="background: var(--accent-blue); color: white; padding: 1px 5px; border-radius: 10px; font-size: 0.7em; margin-left: 5px;">#${moveOrderIndex + 1}</span>` : '';
+
                 let statusClass = 'disabled';
                 let statusText = 'Disabled';
-                
+
                 if (fault) {
                     statusClass = 'fault';
                     // Get error info from Leadshine CS3E error table
@@ -1225,18 +1243,34 @@
                     statusClass = 'enabled';
                     statusText = 'Enabled';
                 }
-                
+
+                // Highlight row if slave is moving
+                const rowStyle = isMoving ? 'background: rgba(59, 130, 246, 0.2); border-left: 3px solid var(--accent-blue);' : '';
+                const movingIndicator = isMoving ? '<span style="color: var(--accent-blue); animation: pulse 1s infinite;">●</span> ' : '';
+
                 html += `
-                    <tr>
+                    <tr style="${rowStyle}">
                         <td class="td-status"><span class="status-icon ${statusClass}"></span></td>
-                        <td>#${String(i + 1).padStart(2, '0')}</td>
+                        <td>${movingIndicator}#${String(i + 1).padStart(2, '0')}${orderBadge}</td>
                         <td>${pos}</td>
                         <td style="color: ${fault ? 'var(--accent-red)' : 'inherit'}; font-weight: ${fault ? 'bold' : 'normal'}">${statusText}</td>
                     </tr>
                 `;
             }
-            
+
             if (html) tbody.innerHTML = html;
+        }
+
+        // Set moving slaves for highlighting
+        function setMovingSlaves(slaves, moveOrder) {
+            currentMovingSlaves = slaves || [];
+            currentMoveOrder = moveOrder || [];
+        }
+
+        // Clear moving slaves highlight
+        function clearMovingSlaves() {
+            currentMovingSlaves = [];
+            currentMoveOrder = [];
         }
         
         // Leadshine EL7-EC Error Code Table (synced with backend ethercat_controller.py)
@@ -1497,24 +1531,44 @@
                 // Handle step timing events
                 if (step.event === 'start') {
                     startStepTimer(step.index);
+
+                    // Set moving slaves for highlighting
+                    if (step.moving_slaves) {
+                        setMovingSlaves(step.moving_slaves, step.move_order || []);
+                    }
+
                     // Update move order display for this step
                     if (step.move_order && step.move_order.length > 0) {
                         updateStepMoveOrder(step.index, step.move_order, step.is_spreading);
                     }
+
+                    // Log movement mode
+                    if (step.is_simultaneous === false) {
+                        templateLog(`  Mode: Staggered (${step.slave_delay_ms}ms delay)`, 'config');
+                    }
+
+                    // Display move order details in log window
+                    if (step.order_details && step.order_details.log) {
+                        updateMoveOrderLog(step.order_details.log);
+                    }
                 } else if (step.event === 'complete') {
                     completeStepTimer(step.index, step.time_taken || 0);
+                    // Clear moving slaves highlight when step completes
+                    clearMovingSlaves();
                 }
             }
 
             // Handle template start event (reset timings)
             if (resp.data && resp.data.template_start) {
                 resetStepTimings();
+                clearMovingSlaves();  // Clear any previous slave highlights
                 templateLog('▶ Template started', 'config');
             }
 
             // Handle template complete event
             if (resp.data && resp.data.template_complete) {
                 stopStepTimer();
+                clearMovingSlaves();  // Clear slave highlights when template completes
                 const total = resp.data.template_complete.total_time;
                 if (total) {
                     templateLog(`✓ Template complete (Total: ${total.toFixed(1)}s)`, 'complete');
@@ -1789,15 +1843,26 @@
             
             if (speed.rotation_speed) {
                 const rs = speed.rotation_speed;
-                document.getElementById('cfgRotationSpeed').textContent = 
+                document.getElementById('cfgRotationSpeed').textContent =
                     `V:${rs.velocity?.toLocaleString()}, A:${rs.acceleration?.toLocaleString()}`;
             } else {
                 document.getElementById('cfgRotationSpeed').textContent = '—';
             }
-            
+
+            // Movement mode display (simultaneous vs staggered)
+            const isSimultaneous = template.is_simultaneous !== false;  // Default to true
+            const slaveDelay = template.slave_delay_ms || 10;
+            if (isSimultaneous) {
+                document.getElementById('cfgMovementMode').textContent = 'Simultaneous (all at once)';
+                document.getElementById('cfgMovementMode').style.color = 'var(--accent-green)';
+            } else {
+                document.getElementById('cfgMovementMode').textContent = `Staggered (${slaveDelay}ms delay)`;
+                document.getElementById('cfgMovementMode').style.color = 'var(--accent-blue)';
+            }
+
             // Update template display with positions
             updateTemplateDisplay(template, config.positions);
-            
+
             log(`Config loaded: ${movementSlaves.length} movement, ${rotationSlaves.length} rotation slaves`, 'sys');
         }
         
@@ -2349,6 +2414,71 @@
         function clearTemplateLogs() {
             document.getElementById('template-log-window').innerHTML = '';
             templateLog('Template log cleared', 'info');
+        }
+
+        // Update move order log window with calculation details
+        function updateMoveOrderLog(logLines) {
+            const logWindow = document.getElementById('move-order-log-window');
+            if (!logWindow) return;
+
+            // Clear previous content
+            logWindow.innerHTML = '';
+
+            // Add timestamp
+            const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+            const headerEl = document.createElement('div');
+            headerEl.style.color = 'var(--text-secondary)';
+            headerEl.style.marginBottom = '8px';
+            headerEl.textContent = `[${timestamp}]`;
+            logWindow.appendChild(headerEl);
+
+            // Process each log line
+            logLines.forEach(line => {
+                const lineEl = document.createElement('div');
+
+                // Color coding based on content
+                if (line.startsWith('===')) {
+                    // Header lines
+                    lineEl.style.color = 'var(--text-gold)';
+                    lineEl.style.fontWeight = 'bold';
+                    lineEl.style.marginTop = '5px';
+                } else if (line.includes('SPREADING')) {
+                    lineEl.style.color = 'var(--accent-green)';
+                } else if (line.includes('CONVERGING')) {
+                    lineEl.style.color = 'var(--accent-blue)';
+                } else if (line.includes('LEFT')) {
+                    lineEl.style.color = 'var(--accent-red)';
+                } else if (line.includes('RIGHT')) {
+                    lineEl.style.color = 'var(--accent-green)';
+                } else if (line.includes('STATIONARY')) {
+                    lineEl.style.color = 'var(--text-secondary)';
+                } else if (line.includes('before')) {
+                    lineEl.style.color = 'var(--accent-purple)';
+                } else if (line.includes('Pick slave')) {
+                    lineEl.style.color = 'var(--accent-blue)';
+                } else if (line.includes('FINAL ORDER')) {
+                    lineEl.style.color = 'var(--text-gold)';
+                    lineEl.style.fontWeight = 'bold';
+                    lineEl.style.fontSize = '1.1em';
+                } else if (line.includes('WARNING')) {
+                    lineEl.style.color = 'var(--accent-red)';
+                    lineEl.style.fontWeight = 'bold';
+                }
+
+                lineEl.textContent = line;
+                logWindow.appendChild(lineEl);
+            });
+
+            // Scroll to bottom
+            logWindow.scrollTop = logWindow.scrollHeight;
+        }
+
+        // Clear move order log
+        function clearMoveOrderLog() {
+            const logWindow = document.getElementById('move-order-log-window');
+            if (logWindow) {
+                logWindow.innerHTML = '<span style="color: var(--text-secondary);">Move order details will appear here during template execution...</span>';
+            }
         }
 
         // UDP log function

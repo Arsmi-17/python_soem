@@ -1144,7 +1144,7 @@ class EtherCATController:
 
         print(f"  [TRIGGER] Started simultaneous move for slaves: {slave_indices}")
 
-    def calculate_move_order(self, slave_positions):
+    def calculate_move_order(self, slave_positions, return_details=False):
         """
         Calculate safe move order for multiple slaves to avoid collisions.
         Uses topological sort based on current/target positions and movement directions.
@@ -1157,14 +1157,22 @@ class EtherCATController:
 
         Args:
             slave_positions: List of tuples [(slave_idx, target_meters), ...]
+            return_details: If True, return detailed log info for UI display
 
         Returns:
-            tuple: (ordered_list, is_spreading)
+            tuple: (ordered_list, is_spreading) or (ordered_list, is_spreading, details) if return_details=True
                 - ordered_list: List of slave indices in safe move order
                 - is_spreading: True if motors are spreading apart, False if converging
+                - details: Dict with calculation details (if return_details=True)
         """
+        details = {'log': []}
+
         if not slave_positions or len(slave_positions) <= 1:
-            return ([sp[0] for sp in slave_positions], False)
+            result = ([sp[0] for sp in slave_positions], False)
+            if return_details:
+                details['log'].append("Single or no slaves - no ordering needed")
+                return result + (details,)
+            return result
 
         num_motors = len(slave_positions)
 
@@ -1173,11 +1181,14 @@ class EtherCATController:
         target_meters = []
         slave_indices = []
 
+        details['log'].append(f"=== Move Order Calculation for {num_motors} slaves ===")
+
         for slave_idx, target in slave_positions:
             current = self.read_position_meters(slave_idx)
             current_meters.append(current)
             target_meters.append(target)
             slave_indices.append(slave_idx)
+            details['log'].append(f"Slave {slave_idx+1}: current={current:.4f}m -> target={target:.4f}m")
 
         # Calculate mean positions
         current_mean = sum(current_meters) / num_motors
@@ -1189,16 +1200,26 @@ class EtherCATController:
 
         is_spreading = target_var > current_var + 1e-6
 
+        details['log'].append(f"")
+        details['log'].append(f"Current mean: {current_mean:.4f}m, variance: {current_var:.6f}")
+        details['log'].append(f"Target mean: {target_mean:.4f}m, variance: {target_var:.6f}")
+        details['log'].append(f"Movement type: {'SPREADING (apart)' if is_spreading else 'CONVERGING (together)'}")
+
         # Determine direction for each motor: 'L' (left/negative), 'R' (right/positive), '0' (no move)
         directions = []
+        details['log'].append(f"")
+        details['log'].append("Direction analysis:")
         for i in range(num_motors):
             delta = target_meters[i] - current_meters[i]
             if delta < -0.0001:  # Moving left (negative direction)
                 directions.append('L')
+                details['log'].append(f"  Slave {slave_indices[i]+1}: LEFT (delta={delta:.4f}m)")
             elif delta > 0.0001:  # Moving right (positive direction)
                 directions.append('R')
+                details['log'].append(f"  Slave {slave_indices[i]+1}: RIGHT (delta={delta:.4f}m)")
             else:
                 directions.append('0')
+                details['log'].append(f"  Slave {slave_indices[i]+1}: STATIONARY")
 
         # Calculate distance from target mean for each motor
         dist_from_mean = [abs(target_meters[i] - target_mean) for i in range(num_motors)]
@@ -1206,6 +1227,7 @@ class EtherCATController:
         # Build dependency graph using adjacency list
         successors = [[] for _ in range(num_motors)]
         indegree = [0] * num_motors
+        dependencies = []
 
         for i in range(num_motors):
             for j in range(num_motors):
@@ -1222,31 +1244,39 @@ class EtherCATController:
                         if dist_i > dist_j:
                             successors[i].append(j)
                             indegree[j] += 1
+                            dependencies.append(f"Slave {slave_indices[i]+1} before {slave_indices[j]+1} (farther from center)")
                         elif dist_j > dist_i:
                             successors[j].append(i)
                             indegree[i] += 1
+                            dependencies.append(f"Slave {slave_indices[j]+1} before {slave_indices[i]+1} (farther from center)")
                         # Equal distances: higher index for 'R', lower for 'L'
                         elif directions[i] == 'R' and directions[j] == 'R' and i > j:
                             successors[i].append(j)
                             indegree[j] += 1
+                            dependencies.append(f"Slave {slave_indices[i]+1} before {slave_indices[j]+1} (higher index, both R)")
                         elif directions[i] == 'L' and directions[j] == 'L' and i < j:
                             successors[i].append(j)
                             indegree[j] += 1
+                            dependencies.append(f"Slave {slave_indices[i]+1} before {slave_indices[j]+1} (lower index, both L)")
                     else:
                         # Converging: prioritize motor going closer to center
                         if dist_i < dist_j:
                             successors[i].append(j)
                             indegree[j] += 1
+                            dependencies.append(f"Slave {slave_indices[i]+1} before {slave_indices[j]+1} (closer to center)")
                         elif dist_j < dist_i:
                             successors[j].append(i)
                             indegree[i] += 1
+                            dependencies.append(f"Slave {slave_indices[j]+1} before {slave_indices[i]+1} (closer to center)")
                         # Equal distances: use index priority
                         elif directions[i] == 'R' and directions[j] == 'R' and i > j:
                             successors[i].append(j)
                             indegree[j] += 1
+                            dependencies.append(f"Slave {slave_indices[i]+1} before {slave_indices[j]+1} (higher index)")
                         elif directions[i] == 'L' and directions[j] == 'L' and i < j:
                             successors[i].append(j)
                             indegree[j] += 1
+                            dependencies.append(f"Slave {slave_indices[i]+1} before {slave_indices[j]+1} (lower index)")
                 else:
                     # Check for potential collision based on movement paths
                     # Motor i moving right, j is in its path to target
@@ -1256,9 +1286,11 @@ class EtherCATController:
                         if is_spreading:
                             successors[i].append(j)
                             indegree[j] += 1
+                            dependencies.append(f"Slave {slave_indices[i]+1} before {slave_indices[j]+1} (collision path R)")
                         else:
                             successors[j].append(i)
                             indegree[i] += 1
+                            dependencies.append(f"Slave {slave_indices[j]+1} before {slave_indices[i]+1} (collision path R)")
                     # Motor i moving left, j is in its path to target
                     elif (directions[i] == 'L' and
                           current_meters[i] > current_meters[j] and
@@ -1266,30 +1298,108 @@ class EtherCATController:
                         if is_spreading:
                             successors[i].append(j)
                             indegree[j] += 1
+                            dependencies.append(f"Slave {slave_indices[i]+1} before {slave_indices[j]+1} (collision path L)")
                         else:
                             successors[j].append(i)
                             indegree[i] += 1
+                            dependencies.append(f"Slave {slave_indices[j]+1} before {slave_indices[i]+1} (collision path L)")
+
+        if dependencies:
+            details['log'].append(f"")
+            details['log'].append("Dependencies found:")
+            for dep in dependencies:
+                details['log'].append(f"  {dep}")
+        else:
+            details['log'].append(f"")
+            details['log'].append("No dependencies - all slaves can move freely")
 
         # Topological sort using Kahn's algorithm
+        # For spreading: RIGHT direction (moving outward positive) goes first with higher index priority
+        #                LEFT direction (moving outward negative) goes second with lower index priority
+        # For converging: The opposite - inner positions first
         queue = []
-        # Prioritize higher indices for moving motors (like C code)
-        for i in range(num_motors - 1, -1, -1):
+
+        # Separate motors by direction for proper ordering
+        right_motors = []  # Moving in positive direction
+        left_motors = []   # Moving in negative direction
+
+        for i in range(num_motors):
             if indegree[i] == 0 and directions[i] != '0':
-                queue.append(i)
+                if directions[i] == 'R':
+                    right_motors.append(i)
+                else:  # 'L'
+                    left_motors.append(i)
+
+        # Sort by distance from target mean (farther first for spreading, closer first for converging)
+        if is_spreading:
+            # Spreading: farther from center first
+            # RIGHT motors: higher index first (they go to positive outer positions)
+            right_motors.sort(key=lambda i: (-dist_from_mean[i], -i))
+            # LEFT motors: lower index first (they go to negative outer positions)
+            left_motors.sort(key=lambda i: (-dist_from_mean[i], i))
+            # RIGHT goes before LEFT for spreading
+            queue = right_motors + left_motors
+        else:
+            # Converging: closer to center first
+            # Sort by distance (closer first), then by index
+            right_motors.sort(key=lambda i: (dist_from_mean[i], -i))
+            left_motors.sort(key=lambda i: (dist_from_mean[i], i))
+            # For converging, inner positions should clear first
+            queue = right_motors + left_motors
+
+        details['log'].append(f"")
+        details['log'].append(f"Initial queue (after direction sorting):")
+        details['log'].append(f"  RIGHT motors: {[slave_indices[i]+1 for i in right_motors]}")
+        details['log'].append(f"  LEFT motors: {[slave_indices[i]+1 for i in left_motors]}")
+        details['log'].append(f"  Combined queue: {[slave_indices[i]+1 for i in queue]}")
 
         order = []
+        topo_log = []
         while queue:
             u = queue.pop(0)
             order.append(u)
+            topo_log.append(f"Pick slave {slave_indices[u]+1} (indegree=0, dir={directions[u]})")
             for v in successors[u]:
                 indegree[v] -= 1
                 if indegree[v] == 0:
-                    queue.append(v)
+                    # Insert maintaining order: find correct position based on direction
+                    inserted = False
+                    for idx, q_item in enumerate(queue):
+                        # Compare by distance first, then by index based on direction
+                        if is_spreading:
+                            # Farther goes first; same distance: R before L, then by index
+                            if dist_from_mean[v] > dist_from_mean[q_item]:
+                                queue.insert(idx, v)
+                                inserted = True
+                                break
+                            elif dist_from_mean[v] == dist_from_mean[q_item]:
+                                if directions[v] == 'R' and directions[q_item] == 'L':
+                                    queue.insert(idx, v)
+                                    inserted = True
+                                    break
+                                elif directions[v] == directions[q_item]:
+                                    if directions[v] == 'R' and v > q_item:
+                                        queue.insert(idx, v)
+                                        inserted = True
+                                        break
+                                    elif directions[v] == 'L' and v < q_item:
+                                        queue.insert(idx, v)
+                                        inserted = True
+                                        break
+                    if not inserted:
+                        queue.append(v)
+                    topo_log.append(f"  -> Slave {slave_indices[v]+1} now has indegree=0")
 
         # Append non-moving motors at the end
         for i in range(num_motors):
             if directions[i] == '0' and i not in order:
                 order.append(i)
+                topo_log.append(f"Append stationary slave {slave_indices[i]+1}")
+
+        details['log'].append(f"")
+        details['log'].append("Topological sort:")
+        for log_line in topo_log:
+            details['log'].append(f"  {log_line}")
 
         # Convert local indices back to slave indices
         ordered_slaves = [slave_indices[i] for i in order]
@@ -1297,9 +1407,34 @@ class EtherCATController:
         # If topological sort failed (cycle detected), return original order
         if len(ordered_slaves) != num_motors:
             print(f"  [MOVE ORDER] Warning: cycle detected, using original order")
-            return ([sp[0] for sp in slave_positions], is_spreading)
+            details['log'].append(f"")
+            details['log'].append("WARNING: Cycle detected, using original order!")
+            result = ([sp[0] for sp in slave_positions], is_spreading)
+            if return_details:
+                return result + (details,)
+            return result
+
+        # Build final order display (1-indexed for UI)
+        final_order_str = " -> ".join([str(s+1) for s in ordered_slaves])
+        details['log'].append(f"")
+        details['log'].append(f"=== FINAL ORDER: {final_order_str} ===")
+
+        # Store additional info
+        details['slave_info'] = []
+        for i, slave_idx in enumerate(ordered_slaves):
+            local_idx = slave_indices.index(slave_idx)
+            details['slave_info'].append({
+                'slave_idx': slave_idx,
+                'order': i + 1,
+                'current': current_meters[local_idx],
+                'target': target_meters[local_idx],
+                'direction': directions[local_idx]
+            })
 
         print(f"  [MOVE ORDER] {'Spreading' if is_spreading else 'Converging'}: {ordered_slaves}")
+
+        if return_details:
+            return (ordered_slaves, is_spreading, details)
         return (ordered_slaves, is_spreading)
 
     def move_to_meters(self, idx, meters, trigger_immediate=True):
@@ -1308,13 +1443,19 @@ class EtherCATController:
         print(f"Moving slave {idx} to {meters:.4f}m (scaled={target_scaled})")
         self.move_to_position(idx, target_scaled, trigger_immediate)
 
-    def move_multiple_to_meters(self, slave_positions):
+    def move_multiple_to_meters(self, slave_positions, simultaneous=True, slave_delay_ms=10, move_order=None):
         """
-        Move multiple slaves simultaneously to their target positions.
+        Move multiple slaves to their target positions.
 
         Args:
             slave_positions: List of tuples [(slave_idx, meters), ...]
                             or dict {slave_idx: meters, ...}
+            simultaneous: If True, trigger all slaves at once (default).
+                         If False, trigger each slave with a delay between them.
+            slave_delay_ms: Delay in milliseconds between triggering each slave
+                           when simultaneous=False (default: 10ms)
+            move_order: Optional list of slave indices in the order they should move.
+                       Used for staggered movement to ensure correct order.
         """
         if isinstance(slave_positions, dict):
             slave_positions = list(slave_positions.items())
@@ -1322,16 +1463,44 @@ class EtherCATController:
         if not slave_positions:
             return
 
-        # Set all targets without triggering
+        # Create a lookup dict for positions
+        pos_lookup = {idx: meters for idx, meters in slave_positions}
         moving_slaves = []
-        for slave_idx, meters in slave_positions:
-            if slave_idx < self.slaves_count:
-                self.move_to_meters(slave_idx, meters, trigger_immediate=False)
-                moving_slaves.append(slave_idx)
 
-        # Trigger all at once
-        if moving_slaves:
-            self.trigger_move(moving_slaves)
+        if simultaneous:
+            # Original behavior: Set all targets without triggering, then trigger all at once
+            for slave_idx, meters in slave_positions:
+                if slave_idx < self.slaves_count:
+                    self.move_to_meters(slave_idx, meters, trigger_immediate=False)
+                    moving_slaves.append(slave_idx)
+
+            # Trigger all at once
+            if moving_slaves:
+                self.trigger_move(moving_slaves)
+        else:
+            # Staggered movement: trigger each slave with delay IN MOVE ORDER
+            delay_sec = slave_delay_ms / 1000.0
+
+            # Use move_order if provided, otherwise use original order
+            if move_order:
+                # Filter move_order to only include slaves that are in slave_positions
+                ordered_slaves = [idx for idx in move_order if idx in pos_lookup]
+            else:
+                ordered_slaves = [idx for idx, _ in slave_positions]
+
+            print(f"    [STAGGERED] Moving in order: {[s+1 for s in ordered_slaves]} with {slave_delay_ms}ms delay")
+
+            for i, slave_idx in enumerate(ordered_slaves):
+                if slave_idx < self.slaves_count and slave_idx in pos_lookup:
+                    meters = pos_lookup[slave_idx]
+                    # Set target and trigger immediately for this slave
+                    print(f"    [STAGGERED] Triggering slave {slave_idx+1} -> {meters:.4f}m")
+                    self.move_to_meters(slave_idx, meters, trigger_immediate=True)
+                    moving_slaves.append(slave_idx)
+
+                    # Add delay before next slave (except for the last one)
+                    if i < len(ordered_slaves) - 1:
+                        time.sleep(delay_sec)
 
         return moving_slaves
     
