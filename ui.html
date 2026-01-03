@@ -415,13 +415,6 @@
             
             <div class="config-label">Interface:</div>
             <div class="config-value" id="interfaceDisplay">Not connected</div>
-            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                <select id="interfaceSelect" style="flex: 1; margin: 0; font-size: 0.75rem;">
-                    <option value="" disabled selected>-- Click to load --</option>
-                </select>
-                <button class="btn btn-outline" onclick="loadAdapters()" style="width: auto; padding: 10px 12px; font-size: 0.75rem;">Load</button>
-                <button class="btn btn-primary" onclick="changeInterface()" style="width: auto; padding: 10px 12px; font-size: 0.75rem;" id="changeInterfaceBtn" disabled>Apply</button>
-            </div>
             
             <div class="stats-row">
                 <span>Slaves: <strong id="slaveCount">0</strong></span>
@@ -447,9 +440,9 @@
                 <select id="homeSlaveSelect" style="flex: 1; margin: 0;" onchange="updateButtonStates()">
                     <option value="" disabled selected>-- Select Slave --</option>
                 </select>
-                <button class="btn btn-gold" onclick="setHome()" style="width: auto; padding: 10px 15px;" disabled>Set Home</button>
+                <button class="btn btn-gold" onclick="setHome()" style="width: auto; padding: 10px 15px;" id="setHomeBtn" disabled>Set Home</button>
             </div>
-            <button class="btn btn-gold" onclick="setHomeAll()" style="margin-bottom: 15px;">Set Home All Slaves</button>
+            <button class="btn btn-gold" onclick="setHomeAll()" style="margin-bottom: 15px;" id="setHomeAllBtn">Set Home All Slaves</button>
 
             <hr>
 
@@ -463,48 +456,50 @@
 
             <hr>
 
+            <button class="btn" onclick="terminateProgram()" style="background: #8B0000; margin-top: 10px;" id="terminateBtn">⏻ Terminate Program</button>
+
+            <hr>
+
             <!-- PP Mode Speed -->
             <div id="speedPP">
                 <h2 style="margin-top: 0; color: var(--accent-green);">PP Speed</h2>
-                
-                <div class="config-label">Velocity (units/s):</div>
-                <input type="number" id="ppVelocity" value="80000" style="margin-bottom: 8px;">
-                
-                <div class="config-label">Acceleration (units/s²):</div>
-                <input type="number" id="ppAccel" value="6000" style="margin-bottom: 8px;">
-                
-                <div class="config-label">Deceleration (units/s²):</div>
-                <input type="number" id="ppDecel" value="6000" style="margin-bottom: 10px;">
-                
-                <button class="btn btn-success" onclick="applyPPSpeed()">Apply PP Speed</button>
+
+                <div class="config-label">Speed (x1000 units/s):</div>
+                <input type="number" id="ppSpeed" value="80" style="margin-bottom: 8px;" oninput="updatePPEffective()">
+
+                <div class="config-label" style="font-size: 0.7rem; color: var(--text-secondary);">
+                    Velocity: <span id="ppEffectiveVel">80000</span> units/s |
+                    Accel/Decel: <span id="ppEffectiveAccel">40000</span> units/s²
+                </div>
+
+                <button class="btn btn-success" onclick="applyPPSpeed()" style="margin-top: 10px;">Apply PP Speed</button>
             </div>
 
             <!-- CSP Mode Speed -->
             <div id="speedCSP" style="display: none;">
                 <h2 style="margin-top: 0; color: var(--accent-blue);">CSP Speed</h2>
-                
+
                 <div class="config-label">Max Step (units/ms):</div>
                 <input type="number" id="cspMaxStep" value="800" style="margin-bottom: 8px;" oninput="updateCSPEffective()">
-                
+
                 <div class="config-label">Effective Velocity: <span id="cspEffectiveVel">800000</span> units/s</div>
-                
+
                 <button class="btn btn-primary" onclick="applyCSPSpeed()" style="margin-top: 10px;">Apply CSP Speed</button>
             </div>
 
             <!-- PV Mode Speed -->
             <div id="speedPV" style="display: none;">
                 <h2 style="margin-top: 0; color: var(--text-gold);">PV Speed</h2>
-                
-                <div class="config-label">Target Velocity (units/s):</div>
-                <input type="number" id="pvVelocity" value="50000" style="margin-bottom: 8px;">
-                
-                <div class="config-label">Acceleration (units/s²):</div>
-                <input type="number" id="pvAccel" value="6000" style="margin-bottom: 8px;">
-                
-                <div class="config-label">Deceleration (units/s²):</div>
-                <input type="number" id="pvDecel" value="6000" style="margin-bottom: 10px;">
-                
-                <button class="btn btn-gold" onclick="applyPVSpeed()">Apply PV Speed</button>
+
+                <div class="config-label">Speed (x1000 units/s):</div>
+                <input type="number" id="pvSpeed" value="50" style="margin-bottom: 8px;" oninput="updatePVEffective()">
+
+                <div class="config-label" style="font-size: 0.7rem; color: var(--text-secondary);">
+                    Velocity: <span id="pvEffectiveVel">50000</span> units/s |
+                    Accel/Decel: <span id="pvEffectiveAccel">25000</span> units/s²
+                </div>
+
+                <button class="btn btn-gold" onclick="applyPVSpeed()" style="margin-top: 10px;">Apply PV Speed</button>
             </div>
         </aside>
 
@@ -589,11 +584,14 @@
             <!-- Template Section -->
             <div id="templateSection">
                 <h2 style="border-color: var(--text-gold); color: var(--text-gold);">Template Execution</h2>
-                
-                <!-- Config file input -->
+
+                <!-- Config file dropdown -->
                 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                    <input type="text" id="configFileName" value="config_both.json" placeholder="config.json" style="flex: 1; margin: 0;">
-                    <button class="btn btn-outline" onclick="loadConfigFile()" style="width: auto; padding: 10px 15px;">Load</button>
+                    <select id="configFileName" style="flex: 1; margin: 0;">
+                        <option value="">-- Select Config --</option>
+                    </select>
+                    <button class="btn btn-outline" onclick="refreshConfigList()" style="width: auto; padding: 10px 12px;" title="Refresh list">↻</button>
+                    <button class="btn btn-primary" onclick="loadConfigFile()" style="width: auto; padding: 10px 15px;">Load</button>
                 </div>
                 
                 <!-- Steps per Meter Config -->
@@ -808,6 +806,7 @@
     <script>
         let ws = null;
         let reconnectTimer = null;
+        let isTerminating = false;  // Flag to prevent reconnection after terminate
 
         // Connect WebSocket
         function connectWS() {
@@ -829,14 +828,21 @@
                     clearInterval(reconnectTimer);
                     reconnectTimer = null;
                 }
-                // Auto-load default config
+                // Auto-load config files list
                 setTimeout(() => {
-                    loadConfigFile();
+                    refreshConfigList();
                 }, 500);
             };
             
             ws.onclose = (event) => {
                 document.getElementById('wsDot').className = 'status-dot disconnected';
+
+                // Don't try to reconnect if we're terminating
+                if (isTerminating) {
+                    log('Program terminated - connection closed', 'sys');
+                    return;
+                }
+
                 log(`WebSocket disconnected (code: ${event.code})`, 'wrn');
                 if (!reconnectTimer) {
                     window.wsRetryCount = (window.wsRetryCount || 0) + 1;
@@ -850,6 +856,8 @@
             };
             
             ws.onerror = (e) => {
+                // Don't log errors if we're terminating
+                if (isTerminating) return;
                 log('WebSocket error - check server connection', 'err');
             };
             
@@ -939,6 +947,11 @@
 
             // Disable mode selector and enable button when faults are detected
             const enableBtn = document.getElementById('enableBtn');
+            const setHomeBtn = document.getElementById('setHomeBtn');
+            const setHomeAllBtn = document.getElementById('setHomeAllBtn');
+            const clearErrorBtn = document.getElementById('clearErrorBtn');
+            const isEnabled = status.state === 2;  // Drives are enabled
+
             if (hasFault) {
                 modeSelector.disabled = true;
                 modeSelector.title = 'Clear faults first before changing mode';
@@ -946,12 +959,61 @@
                     enableBtn.disabled = true;
                     enableBtn.title = 'Clear faults first before enabling';
                 }
+            } else if (isEnabled) {
+                // Drives are enabled - disable mode change
+                modeSelector.disabled = true;
+                modeSelector.title = 'Disable drives first before changing mode';
+                if (enableBtn) {
+                    enableBtn.disabled = false;
+                    enableBtn.title = '';
+                }
             } else {
                 modeSelector.disabled = false;
                 modeSelector.title = '';
                 if (enableBtn) {
                     enableBtn.disabled = false;
                     enableBtn.title = '';
+                }
+            }
+
+            // Disable Set Home buttons when enabled
+            if (setHomeBtn) {
+                if (isEnabled) {
+                    setHomeBtn.disabled = true;
+                    setHomeBtn.title = 'Disable drives first';
+                    setHomeBtn.style.opacity = '0.5';
+                } else {
+                    // Re-enable based on slave selection
+                    const homeSlaveSelected = document.getElementById('homeSlaveSelect').value !== '';
+                    setHomeBtn.disabled = !homeSlaveSelected;
+                    setHomeBtn.title = '';
+                    setHomeBtn.style.opacity = homeSlaveSelected ? '1' : '0.5';
+                }
+            }
+            if (setHomeAllBtn) {
+                if (isEnabled) {
+                    setHomeAllBtn.disabled = true;
+                    setHomeAllBtn.title = 'Disable drives first';
+                    setHomeAllBtn.style.opacity = '0.5';
+                } else {
+                    setHomeAllBtn.disabled = false;
+                    setHomeAllBtn.title = '';
+                    setHomeAllBtn.style.opacity = '1';
+                }
+            }
+
+            // Disable Clear Error button when enabled
+            if (clearErrorBtn) {
+                if (isEnabled) {
+                    clearErrorBtn.disabled = true;
+                    clearErrorBtn.title = 'Disable drives first';
+                    clearErrorBtn.style.opacity = '0.5';
+                } else {
+                    // Re-enable based on slave selection
+                    const clearErrorSlaveSelected = document.getElementById('clearErrorSlaveSelect').value !== '';
+                    clearErrorBtn.disabled = !clearErrorSlaveSelected;
+                    clearErrorBtn.title = '';
+                    clearErrorBtn.style.opacity = clearErrorSlaveSelected ? '1' : '0.5';
                 }
             }
 
@@ -1357,7 +1419,6 @@
             const velSlaveSelected = document.getElementById('slaveSelectVel').value !== '';
             const homeSlaveSelected = document.getElementById('homeSlaveSelect').value !== '';
             const clearErrorSlaveSelected = document.getElementById('clearErrorSlaveSelect').value !== '';
-            const interfaceSelected = document.getElementById('interfaceSelect').value !== '';
 
             // Position mode buttons
             document.querySelectorAll('#positionControls button').forEach(btn => {
@@ -1387,14 +1448,6 @@
                 clearErrorBtn.disabled = !clearErrorSlaveSelected;
                 clearErrorBtn.style.opacity = clearErrorSlaveSelected ? '1' : '0.5';
                 clearErrorBtn.style.cursor = clearErrorSlaveSelected ? 'pointer' : 'not-allowed';
-            }
-
-            // Interface change button
-            const changeInterfaceBtn = document.getElementById('changeInterfaceBtn');
-            if (changeInterfaceBtn) {
-                changeInterfaceBtn.disabled = !interfaceSelected;
-                changeInterfaceBtn.style.opacity = interfaceSelected ? '1' : '0.5';
-                changeInterfaceBtn.style.cursor = interfaceSelected ? 'pointer' : 'not-allowed';
             }
         }
 
@@ -1473,11 +1526,6 @@
                 templateLog(`  → Slave ${move.slave}: ${move.position}`, 'move');
             }
 
-            // Handle adapter list response
-            if (resp.data && resp.data.adapters) {
-                updateAdapterList(resp.data.adapters);
-            }
-
             // Handle UDP log entries
             if (resp.data && resp.data.udp_log) {
                 addUdpLogEntry(resp.data.udp_log);
@@ -1487,20 +1535,14 @@
             if (resp.data && resp.data.osc_log) {
                 addOscLogEntry(resp.data.osc_log);
             }
+
+            // Handle config files list
+            if (resp.data && resp.data.config_files) {
+                console.log('Config files received:', resp.data.config_files);
+                updateConfigList(resp.data.config_files);
+            }
         }
 
-        // Update adapter list in dropdown
-        function updateAdapterList(adapters) {
-            const select = document.getElementById('interfaceSelect');
-            let html = '<option value="" disabled>-- Select Interface --</option>';
-            adapters.forEach(adapter => {
-                html += `<option value="${adapter.name}">${adapter.desc || adapter.name}</option>`;
-            });
-            select.innerHTML = html;
-            log(`Found ${adapters.length} network adapters`, 'sys');
-            updateButtonStates();
-        }
-        
         // Store loaded config globally for template execution
         let loadedConfig = null;
 
@@ -1735,11 +1777,11 @@
                 document.getElementById('cfgMovementSpeed').textContent = 
                     `V:${ms.velocity?.toLocaleString()}, A:${ms.acceleration?.toLocaleString()}`;
                 
-                // Update speed inputs
-                document.getElementById('ppVelocity').value = ms.velocity || 80000;
-                document.getElementById('ppAccel').value = ms.acceleration || 6000;
-                document.getElementById('ppDecel').value = ms.deceleration || 6000;
+                // Update speed inputs (convert to simplified units)
+                const velocity = ms.velocity || 80000;
+                document.getElementById('ppSpeed').value = Math.round(velocity / 1000);
                 document.getElementById('cspMaxStep').value = ms.csp_max_step || 800;
+                updatePPEffective();
                 updateCSPEffective();
             } else {
                 document.getElementById('cfgMovementSpeed').textContent = '—';
@@ -1835,18 +1877,20 @@
                 log('Please select a slave first', 'err');
                 return;
             }
-            const speed = parseInt(document.getElementById('pvVelocity').value) || 50000;
+            const speedUnit = parseInt(document.getElementById('pvSpeed').value) || 50;
+            const speed = speedUnit * 1000;
             sendCmd('velocity_forward', { slave: slave, speed: speed });
             log(`Slave #${parseInt(slave) + 1} Forward: ${speed} units/s`, 'com');
         }
-        
+
         function velocityBackward() {
             const slave = document.getElementById('slaveSelectVel').value;
             if (!slave) {
                 log('Please select a slave first', 'err');
                 return;
             }
-            const speed = parseInt(document.getElementById('pvVelocity').value) || 50000;
+            const speedUnit = parseInt(document.getElementById('pvSpeed').value) || 50;
+            const speed = speedUnit * 1000;
             sendCmd('velocity_backward', { slave: slave, speed: speed });
             log(`Slave #${parseInt(slave) + 1} Backward: ${speed} units/s`, 'com');
         }
@@ -1921,25 +1965,35 @@
             log(`Clearing error for Slave #${parseInt(slave) + 1}...`, 'com');
         }
 
-        // Load network adapters
-        function loadAdapters() {
-            log('Loading network adapters...', 'com');
-            sendCmd('get_adapters');
-        }
+        // Terminate program - quits backend and closes UI
+        function terminateProgram() {
+            if (!confirm('Are you sure you want to terminate the program?\n\nThis will disable all drives and shut down the server.')) {
+                return;
+            }
 
-        // Change network interface
-        function changeInterface() {
-            const interfaceSelect = document.getElementById('interfaceSelect');
-            const newInterface = interfaceSelect.value;
-            if (!newInterface) {
-                log('Please select an interface first', 'err');
-                return;
+            // Set terminating flag to prevent reconnection attempts
+            isTerminating = true;
+
+            // Clear any pending reconnection timer
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
             }
-            if (!confirm(`Change interface to: ${interfaceSelect.options[interfaceSelect.selectedIndex].text}?\nThis will disconnect and reconnect.`)) {
-                return;
-            }
-            sendCmd('change_interface', { interface: newInterface });
-            log(`Changing interface to: ${newInterface}`, 'com');
+
+            log('Terminating program...', 'err');
+            sendCmd('quit');
+
+            // Close the browser tab after a short delay
+            setTimeout(() => {
+                // Try to close the tab
+                window.open('', '_self').close();
+                window.close();
+
+                // If still open, replace page content with termination message
+                setTimeout(() => {
+                    document.body.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100vh;background:#0d1117;color:#f85149;font-size:24px;font-family:sans-serif;">Program terminated. You can close this tab.</div>';
+                }, 300);
+            }, 200);
         }
 
         // UDP Connect
@@ -2083,9 +2137,53 @@
             if (logWindow) logWindow.innerHTML = '';
         }
 
+        // Refresh config file list using REST API (more reliable than WebSocket)
+        async function refreshConfigList() {
+            log('Loading config files list...', 'com');
+            try {
+                const response = await fetch('/api/configs');
+                const data = await response.json();
+                if (data.config_files) {
+                    updateConfigList(data.config_files);
+                } else {
+                    log('No config files found', 'wrn');
+                }
+            } catch (error) {
+                console.error('Failed to load config files:', error);
+                log('Failed to load config files: ' + error.message, 'err');
+            }
+        }
+
+        // Update config dropdown with file list
+        function updateConfigList(files) {
+            const select = document.getElementById('configFileName');
+            if (!select) {
+                console.error('Config dropdown element not found!');
+                return;
+            }
+            if (!files || !Array.isArray(files)) {
+                console.error('Invalid config files data:', files);
+                return;
+            }
+
+            const currentValue = select.value;
+
+            let html = '<option value="">-- Select Config --</option>';
+            files.forEach(file => {
+                const selected = file === currentValue ? 'selected' : '';
+                html += `<option value="${file}" ${selected}>${file}</option>`;
+            });
+            select.innerHTML = html;
+            log(`Found ${files.length} config files`, 'sys');
+        }
+
         // Load config file
         function loadConfigFile() {
-            const fileName = document.getElementById('configFileName').value || 'config.json';
+            const fileName = document.getElementById('configFileName').value;
+            if (!fileName) {
+                log('Please select a config file first', 'err');
+                return;
+            }
             log(`Loading config: ${fileName}...`, 'com');
             sendCmd('load_config', { filename: fileName });
         }
@@ -2118,6 +2216,24 @@
             }
         }
 
+        // Update PP effective velocity display
+        function updatePPEffective() {
+            const speed = parseInt(document.getElementById('ppSpeed').value) || 80;
+            const velocity = speed * 1000;
+            const accelDecel = Math.floor(velocity / 2);
+            document.getElementById('ppEffectiveVel').textContent = velocity.toLocaleString();
+            document.getElementById('ppEffectiveAccel').textContent = accelDecel.toLocaleString();
+        }
+
+        // Update PV effective velocity display
+        function updatePVEffective() {
+            const speed = parseInt(document.getElementById('pvSpeed').value) || 50;
+            const velocity = speed * 1000;
+            const accelDecel = Math.floor(velocity / 2);
+            document.getElementById('pvEffectiveVel').textContent = velocity.toLocaleString();
+            document.getElementById('pvEffectiveAccel').textContent = accelDecel.toLocaleString();
+        }
+
         // Update CSP effective velocity display
         function updateCSPEffective() {
             const maxStep = parseInt(document.getElementById('cspMaxStep').value) || 800;
@@ -2126,46 +2242,46 @@
 
         // Apply PP Mode Speed
         function applyPPSpeed() {
-            const velocity = parseInt(document.getElementById('ppVelocity').value);
-            const accel = parseInt(document.getElementById('ppAccel').value);
-            const decel = parseInt(document.getElementById('ppDecel').value);
-            
+            const speed = parseInt(document.getElementById('ppSpeed').value) || 80;
+            const velocity = speed * 1000;
+            const accelDecel = Math.floor(velocity / 2);
+
             sendCmd('set_speed', {
                 mode: 'PP',
                 velocity: velocity,
-                acceleration: accel,
-                deceleration: decel
+                acceleration: accelDecel,
+                deceleration: accelDecel
             });
-            
-            log(`PP Speed: vel=${velocity}, accel=${accel}, decel=${decel}`, 'com');
+
+            log(`PP Speed: vel=${velocity}, accel/decel=${accelDecel}`, 'com');
         }
 
         // Apply CSP Mode Speed
         function applyCSPSpeed() {
             const maxStep = parseInt(document.getElementById('cspMaxStep').value);
-            
+
             sendCmd('set_speed', {
                 mode: 'CSP',
                 csp_velocity: maxStep
             });
-            
+
             log(`CSP Speed: max_step=${maxStep} units/ms (${maxStep * 1000} units/s)`, 'com');
         }
 
         // Apply PV Mode Speed
         function applyPVSpeed() {
-            const velocity = parseInt(document.getElementById('pvVelocity').value);
-            const accel = parseInt(document.getElementById('pvAccel').value);
-            const decel = parseInt(document.getElementById('pvDecel').value);
-            
+            const speed = parseInt(document.getElementById('pvSpeed').value) || 50;
+            const velocity = speed * 1000;
+            const accelDecel = Math.floor(velocity / 2);
+
             sendCmd('set_speed', {
                 mode: 'PV',
                 velocity: velocity,
-                acceleration: accel,
-                deceleration: decel
+                acceleration: accelDecel,
+                deceleration: accelDecel
             });
-            
-            log(`PV Speed: vel=${velocity}, accel=${accel}, decel=${decel}`, 'com');
+
+            log(`PV Speed: vel=${velocity}, accel/decel=${accelDecel}`, 'com');
         }
 
         // Logging

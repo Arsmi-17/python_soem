@@ -131,18 +131,40 @@ async def broadcast_status():
                             connected_clients.remove(client)
                     
                     # Check for template updates (non-blocking)
+                    # Note: Only broadcast async responses (template steps, UDP/OSC logs)
+                    # Direct command responses are handled in websocket_endpoint
                     try:
                         resp = motor.get_response(timeout=0.001)
                         if resp and connected_clients:
-                            resp_message = json.dumps({
-                                'type': 'response',
-                                'data': resp
-                            })
-                            for client in list(connected_clients):
-                                try:
-                                    await client.send_text(resp_message)
-                                except:
-                                    pass
+                            # Only broadcast if it's an async event (has template_step, udp_log, osc_log, etc.)
+                            resp_data = resp.get('data', {}) if resp.get('data') else {}
+                            is_async_event = (
+                                resp_data.get('template_step') or
+                                resp_data.get('template_start') or
+                                resp_data.get('template_complete') or
+                                resp_data.get('udp_log') or
+                                resp_data.get('osc_log') or
+                                resp_data.get('slave_change') or
+                                resp_data.get('communication_error') or
+                                resp_data.get('recovery_success') is not None or
+                                resp_data.get('config_files') or
+                                resp_data.get('config') or
+                                resp_data.get('template')
+                            )
+                            if is_async_event:
+                                print(f"[broadcast] Broadcasting async event: {resp.get('message', 'unknown')}")
+                                resp_message = json.dumps({
+                                    'type': 'response',
+                                    'data': resp
+                                })
+                                for client in list(connected_clients):
+                                    try:
+                                        await client.send_text(resp_message)
+                                    except:
+                                        pass
+                            else:
+                                # Non-async event consumed - this is the bug!
+                                print(f"[broadcast] WARNING: Consumed non-async response: {resp.get('message', 'unknown')}")
                     except:
                         pass
                         
@@ -234,6 +256,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 motor.send_command(MotorProcess.CMD_OSC_DISCONNECT)
             elif cmd == 'get_adapters':
                 motor.send_command(MotorProcess.CMD_GET_ADAPTERS)
+            elif cmd == 'list_configs':
+                motor.send_command(MotorProcess.CMD_LIST_CONFIGS)
             elif cmd == 'change_interface':
                 motor.send_command(MotorProcess.CMD_CHANGE_INTERFACE, cmd_data)
             elif cmd == 'rescan':
@@ -242,16 +266,62 @@ async def websocket_endpoint(websocket: WebSocket):
                 motor.send_command(MotorProcess.CMD_RECOVER)
             elif cmd == 'clear_event':
                 motor.clear_event()
-            
+            elif cmd == 'quit':
+                # Terminate program - disable drives first to avoid error 81b
+                print("\n[QUIT] Terminate command received - shutting down...")
+
+                # First stop any motion immediately
+                motor.emergency_stop()
+                await asyncio.sleep(0.2)
+
+                # Then disable all drives gracefully
+                print("[QUIT] Sending disable command...")
+                motor.send_command(MotorProcess.CMD_DISABLE)
+
+                # Wait for disable response with longer timeout
+                try:
+                    resp = motor.get_response(timeout=2.0)
+                    if resp:
+                        print(f"[QUIT] Disable response: {resp.get('message', 'OK')}")
+                except:
+                    pass
+
+                # Wait for PDO cycle to complete disable sequence
+                print("[QUIT] Waiting for drives to fully disable...")
+                await asyncio.sleep(1.0)
+
+                # Send response before stopping
+                try:
+                    await websocket.send_text(json.dumps({
+                        'type': 'response',
+                        'data': {'success': True, 'message': 'Program terminated'}
+                    }))
+                except:
+                    pass
+
+                await asyncio.sleep(0.1)
+
+                # Stop motor process (this stops PDO thread)
+                print("[QUIT] Stopping motor process...")
+                motor.stop()
+
+                print("[QUIT] Exiting...")
+                os._exit(0)  # Force exit the entire process
+
             # Check for response (increase timeout for file operations)
-            timeout = 2.0 if cmd == 'load_config' else 0.5
+            timeout = 2.0 if cmd in ['load_config', 'list_configs'] else 0.5
             resp = motor.get_response(timeout=timeout)
             if resp:
                 print(f"[web_server] Response for {cmd}: {resp.get('message', 'no message')}")
+                # Debug: print config_files if present
+                if resp.get('data') and resp['data'].get('config_files'):
+                    print(f"[web_server] Config files in response: {resp['data']['config_files']}")
                 await websocket.send_text(json.dumps({
                     'type': 'response',
                     'data': resp
                 }))
+            else:
+                print(f"[web_server] No response for {cmd} (timeout={timeout}s)")
     
     except WebSocketDisconnect:
         pass
@@ -353,6 +423,19 @@ async def get_adapters():
             'desc': a.desc
         })
     return {'adapters': adapters}
+
+
+@app.get("/api/configs")
+async def list_configs():
+    """List available JSON config files in json folder"""
+    import glob
+    json_folder = os.path.join(os.path.dirname(__file__), 'json')
+    config_files = []
+    if os.path.exists(json_folder):
+        for f in sorted(glob.glob(os.path.join(json_folder, '*.json'))):
+            config_files.append(os.path.basename(f))
+    print(f"[API] Found config files: {config_files}")
+    return {'config_files': config_files}
 
 
 @app.post("/api/config")

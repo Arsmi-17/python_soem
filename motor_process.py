@@ -10,6 +10,8 @@ import time
 import ctypes
 import socket
 import threading
+import os
+import glob
 
 from ethercat_controller import EtherCATController
 
@@ -40,6 +42,7 @@ class MotorProcess:
     CMD_RECOVER = 'recover'  # Manual recovery after communication error
     CMD_OSC_CONNECT = 'osc_connect'  # Start OSC sender/receiver
     CMD_OSC_DISCONNECT = 'osc_disconnect'  # Stop OSC
+    CMD_LIST_CONFIGS = 'list_configs'  # List JSON config files
     CMD_QUIT = 'quit'
 
     
@@ -1444,6 +1447,25 @@ class MotorProcess:
                             })
                         send_response(True, f"Found {len(adapters)} adapters", {'adapters': adapters})
 
+                    elif cmd == MotorProcess.CMD_LIST_CONFIGS:
+                        # List JSON config files in json folder
+                        import sys
+                        print("\n[LIST CONFIGS] Listing config files...", flush=True)
+                        json_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'json')
+                        print(f"[LIST CONFIGS] Looking in: {json_folder}", flush=True)
+                        config_files = []
+                        try:
+                            if os.path.exists(json_folder):
+                                for f in sorted(glob.glob(os.path.join(json_folder, '*.json'))):
+                                    config_files.append(os.path.basename(f))
+                                print(f"[LIST CONFIGS] Found files: {config_files}", flush=True)
+                            else:
+                                print(f"[LIST CONFIGS] Folder does not exist: {json_folder}", flush=True)
+                        except Exception as e:
+                            print(f"[LIST CONFIGS] Error listing files: {e}", flush=True)
+                        send_response(True, f"Found {len(config_files)} config files", {'config_files': config_files})
+                        print(f"[LIST CONFIGS] Response sent with {len(config_files)} files", flush=True)
+
                     elif cmd == MotorProcess.CMD_CHANGE_INTERFACE:
                         # Change network interface
                         if data:
@@ -1785,8 +1807,8 @@ class MotorProcess:
                                     elif movement_slave_positions:
                                         move_order = [movement_slave_positions[0][0]]
 
-                                    # Send OSC notification BEFORE step starts
-                                    osc_send_template_step(step_idx)
+                                    # Send OSC notification BEFORE step starts (1-indexed)
+                                    osc_send_template_step(step_idx + 1)
 
                                     # Send step start notification with move order
                                     send_response(True, f"Executing: {name}", {
@@ -1904,9 +1926,6 @@ class MotorProcess:
                         else:
                             # Send template complete with total time
                             print(f"\n[Template] Complete in {template_total_time:.1f}s")
-
-                            # Send OSC notification for template completion
-                            osc_send_template_complete()
 
                             send_response(True, f"Template complete ({template_total_time:.1f}s)", {
                                 'template_complete': {

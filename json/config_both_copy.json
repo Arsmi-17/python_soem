@@ -14,9 +14,8 @@
     },
     "positions": {
         "home_pos_M": [0, 0],
-        "pos_1": [-0.35, 0.35],
-        "pos_2": [-0.5, 0.5],
-        "rot_0": [0, 0]
+        "pos_1": [-1, 1],
+        "pos_2": [-0.5, 0.5]
     },
     "template": {
         "name": "Movement + Rotation Sequence",
@@ -35,24 +34,24 @@
                 "name": "Move to Position 1",
                 "type": "movement",
                 "position": "pos_1",
-                "delay": 3
+                "delay": 7
             },
             {
                 "name": "Home All",
                 "type": "home",
                 "position": "home_pos_M",
-                "delay": 3
-            },
-            {
-                "name": "Move to Position 1",
-                "type": "movement",
-                "position": "pos_1",
-                "delay": 3
+                "delay": 7
             },
             {
                 "name": "Move to Position 1",
                 "type": "movement",
                 "position": "pos_2",
+                "delay": 7
+            },
+            {
+                "name": "Home All",
+                "type": "home",
+                "position": "home_pos_M",
                 "delay": 3
             }
         ]

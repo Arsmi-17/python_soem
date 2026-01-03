@@ -138,17 +138,77 @@ class EtherCATController:
                 else:
                     print("No adapters found!")
                     return False
-            
+
             print(f"\nUsing interface: {self.interface}")
-            
+
             # Open master
             self.master.open(self.interface)
-            
+
             # Find slaves
             self.slaves_count = self.master.config_init(usetable=False)
             if self.slaves_count <= 0:
-                print("No slaves found!")
-                return False
+                print("No slaves found on this interface!")
+                self.master.close()
+
+                # Show available interfaces
+                adapters = pysoem.find_adapters()
+                if not adapters:
+                    print("No network adapters found!")
+                    return False
+
+                print("\n" + "="*60)
+                print("Available Network Interfaces:")
+                print("="*60)
+                for i, a in enumerate(adapters):
+                    print(f"  [{i}] {a.desc}")
+                    print(f"      Name: {a.name}")
+                print("="*60)
+
+                # Check if running interactively (has terminal access)
+                import sys
+                if not sys.stdin.isatty():
+                    print("\nRunning in non-interactive mode.")
+                    print("Please update 'network_interface' in json/config.json")
+                    print("with one of the interface names listed above.")
+                    return False
+
+                # Interactive mode - let user choose
+                while True:
+                    try:
+                        choice = input("\nEnter interface number (or 'q' to quit): ").strip()
+                        if choice.lower() == 'q':
+                            print("Exiting...")
+                            return False
+
+                        idx = int(choice)
+                        if 0 <= idx < len(adapters):
+                            self.interface = adapters[idx].name
+                            print(f"\nSelected: {adapters[idx].desc}")
+                            print(f"Trying interface: {self.interface}")
+
+                            # Try connecting with selected interface
+                            self.master = pysoem.Master()
+                            self.master.open(self.interface)
+                            self.slaves_count = self.master.config_init(usetable=False)
+
+                            if self.slaves_count > 0:
+                                print(f"Found {self.slaves_count} slave(s)!")
+                                break
+                            else:
+                                print(f"No slaves found on {adapters[idx].desc}")
+                                self.master.close()
+                                print("\nTry another interface...")
+                        else:
+                            print(f"Invalid choice. Enter 0-{len(adapters)-1}")
+                    except ValueError:
+                        print("Please enter a valid number")
+                    except EOFError:
+                        print("\nNo interactive input available.")
+                        print("Please update 'network_interface' in json/config.json")
+                        return False
+                    except Exception as e:
+                        print(f"Error: {e}")
+                        return False
             
             print(f"Found {self.slaves_count} slave(s)")
             
@@ -1797,20 +1857,38 @@ class EtherCATController:
         for i in range(self.slaves_count):
             with self._trajectory_locks[i]:
                 self._trajectory_active[i] = False
-        
-        # Stop PDO
+
+        # Disable drives WHILE PDO is still running
+        # This ensures the disable command is actually sent to the drives
+        print("Sending disable to drives...")
+        for i in range(self.slaves_count):
+            self._control_word[i] = 0x0000  # Disable
+
+        # Wait for PDO to send the disable command (several cycles)
+        time.sleep(0.3)
+
+        # Now stop PDO
         self._pdo_running = False
         if self._pdo_thread:
             self._pdo_thread.join(timeout=1.0)
-        
-        # Disable drives
-        for i in range(self.slaves_count):
-            self._control_word[i] = 0
-        
-        time.sleep(0.1)
-        
-        self.master.state = pysoem.INIT_STATE
-        self.master.write_state()
-        self.master.close()
+
+        # Restore Windows timer resolution if set
+        try:
+            import ctypes
+            winmm = ctypes.windll.winmm
+            winmm.timeEndPeriod(1)
+            print("[PDO] Windows timer resolution restored")
+        except:
+            pass
+
+        # Transition to INIT state
+        try:
+            self.master.state = pysoem.INIT_STATE
+            self.master.write_state()
+            time.sleep(0.1)
+            self.master.close()
+        except Exception as e:
+            print(f"Disconnect warning: {e}")
+
         self.connected = False
         print("Disconnected")

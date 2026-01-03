@@ -8,24 +8,21 @@
         }
     },
     "slaves": {
-        "count": 5,
+        "count": 2,
         "names": [
             "Movement 1",
-            "Movement 2",
-            "Movement 3",
-            "Movement 4",
-            "Movement 5"
+            "Movement 2"
         ],
-        "movement_slaves": [0, 1, 2, 3, 4]
+        "movement_slaves": [0, 1]
     },
     "positions": {
-        "home_pos_M": [0, 0, 0, 0, 0],
-        "pos_1": [-1, -0.45, 0, 0.45, 1.0],
-        "pos_2": [-0.7, -0.35, 0, 0.35, 0.7]
+        "home_pos_M": [0, 0],
+        "pos_1": [-0.5, 0.5],
+        "pos_2": [-1, 1]
     },
     "template": {
-        "name": "Movement Sequence (5 Slaves)",
-        "description": "Movement-only sequence using 5 slaves",
+        "name": "Movement Sequence (2 Slaves)",
+        "description": "Movement-only sequence using 2 slaves",
         "loop": false,
         "loop_count": 1,
         "operation_mode": "movement",
@@ -34,31 +31,19 @@
                 "name": "Home All",
                 "type": "home",
                 "position": "home_pos_M",
-                "delay": 2
+                "delay": 3
             },
             {
                 "name": "Move to Position 1",
                 "type": "movement",
                 "position": "pos_1",
-                "delay": 9.5
-            },
-            {
-                "name": "Home All",
-                "type": "home",
-                "position": "home_pos_M",
-                "delay": 2.5
+                "delay": 3
             },
             {
                 "name": "Move to Position 2",
                 "type": "movement",
                 "position": "pos_2",
-                "delay": 7
-            },
-            {
-                "name": "Home All",
-                "type": "home",
-                "position": "home_pos_M",
-                "delay": 2.7
+                "delay": 3
             }
         ]
     }
