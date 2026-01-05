@@ -1136,7 +1136,16 @@ class MotorProcess:
                             time.sleep(0.5)
                             shared_moving.value = 0
                             send_response(True, f"Move command sent")
-                    
+
+                    elif cmd == 'move_all_home':
+                        # Move all slaves to home (0m) position
+                        shared_moving.value = 1
+                        for i in range(ec.slaves_count):
+                            ec.move_to_meters(i, 0.0)
+                        time.sleep(0.5)
+                        shared_moving.value = 0
+                        send_response(True, "Moving all slaves to home (0m)")
+
                     elif cmd == MotorProcess.CMD_HOME:
                         shared_moving.value = 1
                         ec.home_all()

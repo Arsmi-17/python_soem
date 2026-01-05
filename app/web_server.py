@@ -220,6 +220,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 motor.send_command('velocity_stop', cmd_data)
             elif cmd == 'move':
                 motor.send_command(MotorProcess.CMD_MOVE, cmd_data)
+            elif cmd == 'move_all_home':
+                motor.send_command('move_all_home', cmd_data)
             elif cmd == 'stop':
                 motor.emergency_stop()  # Use emergency_stop for immediate action
             elif cmd == 'template':

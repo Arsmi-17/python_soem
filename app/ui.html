@@ -546,7 +546,7 @@
                         </div>
                         
                         <!-- STOP Button -->
-                        <button class="btn btn-danger" onclick="emergencyStop()" style="margin: 15px 0; font-size: 1.2em; padding: 15px; width: 100%;">
+                        <button id="emergencyStopBtn" class="btn btn-danger" onclick="emergencyStop()" style="margin: 15px 0; font-size: 1.2em; padding: 15px; width: 100%;" disabled>
                             ▪ EMERGENCY STOP
                         </button>
                         
@@ -555,7 +555,10 @@
                             <option value="" disabled selected>-- Select Slave --</option>
                         </select>
                         <input type="number" id="targetPosition" placeholder="Target Position (meters)" step="0.01">
-                        <button class="btn btn-primary" onclick="executeMove()">Execute Move</button>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;">
+                            <button class="btn btn-primary" onclick="executeMove()">Execute Move</button>
+                            <button id="allToHomeBtn" class="btn btn-home" onclick="moveAllToHome()">All to Home</button>
+                        </div>
                     </div>
                     
                     <!-- Velocity Mode Controls (PV) -->
@@ -1026,6 +1029,16 @@
                 }
             }
 
+            // All to Home button - only enabled when drives are enabled and no fault
+            const allToHomeBtn = document.getElementById('allToHomeBtn');
+            if (allToHomeBtn) {
+                const canMoveAllHome = isEnabled && !hasFault;
+                allToHomeBtn.disabled = !canMoveAllHome;
+                allToHomeBtn.style.opacity = canMoveAllHome ? '1' : '0.5';
+                allToHomeBtn.style.cursor = canMoveAllHome ? 'pointer' : 'not-allowed';
+                allToHomeBtn.title = hasFault ? 'Clear faults first' : (!isEnabled ? 'Enable drives first' : '');
+            }
+
             // Update mode
             if (status.mode !== undefined) {
                 const modeNames = {1: 'PP', 3: 'PV', 8: 'CSP'};
@@ -1454,8 +1467,9 @@
             const homeSlaveSelected = document.getElementById('homeSlaveSelect').value !== '';
             const clearErrorSlaveSelected = document.getElementById('clearErrorSlaveSelect').value !== '';
 
-            // Position mode buttons
+            // Position mode buttons (except All to Home and Emergency Stop which have separate logic)
             document.querySelectorAll('#positionControls button').forEach(btn => {
+                if (btn.id === 'allToHomeBtn' || btn.id === 'emergencyStopBtn') return; // Skip - have separate control logic
                 btn.disabled = !posSlaveSelected;
                 btn.style.opacity = posSlaveSelected ? '1' : '0.5';
                 btn.style.cursor = posSlaveSelected ? 'pointer' : 'not-allowed';
@@ -1974,6 +1988,14 @@
         function emergencyStop() {
             sendCmd('stop');
             log('EMERGENCY STOP - All motion stopped!', 'err');
+
+            // Disable emergency stop button after stopping
+            const emergencyStopBtn = document.getElementById('emergencyStopBtn');
+            if (emergencyStopBtn) {
+                emergencyStopBtn.disabled = true;
+                emergencyStopBtn.style.opacity = '0.5';
+                emergencyStopBtn.style.cursor = 'not-allowed';
+            }
         }
 
         // Move to position
@@ -1997,6 +2019,20 @@
                 return;
             }
             moveTo(target);
+        }
+
+        // Move all slaves to home (0m) position
+        function moveAllToHome() {
+            sendCmd('move_all_home');
+            log('Moving ALL slaves to home (0m)...', 'com');
+
+            // Enable emergency stop button when moving
+            const emergencyStopBtn = document.getElementById('emergencyStopBtn');
+            if (emergencyStopBtn) {
+                emergencyStopBtn.disabled = false;
+                emergencyStopBtn.style.opacity = '1';
+                emergencyStopBtn.style.cursor = 'pointer';
+            }
         }
 
         // Set Home for specific slave
