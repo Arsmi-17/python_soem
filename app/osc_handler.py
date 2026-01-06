@@ -24,33 +24,59 @@ OSC Address Bindings:
 OSC Output Messages:
     /movement [slave_id] [position] - Sent continuously while moving
     /reached [value] - Sent when target position reached
+
+Configuration:
+    Settings are loaded from osc/rotorscope_config.json
 """
 
+import json
+import os
 import socket
 import struct
 import threading
 import time
 
 
+def load_osc_config():
+    """Load OSC configuration from rotorscope_config.json"""
+    config_path = os.path.join(os.path.dirname(__file__), 'osc', 'rotorscope_config.json')
+    default_config = {
+        "speed": {"velocity": 80000, "acceleration": 40000, "deceleration": 40000},
+        "start_value_map": {"0": 0, "1": 0.1, "2": 0.5, "3": 1.0, "4": 1.5, "5": 2.0},
+        "position_tolerance": 0.002,
+        "broadcast_interval": 0.05
+    }
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            print(f"[OSC Handler] Loaded config from {config_path}")
+            return config
+    except Exception as e:
+        print(f"[OSC Handler] Could not load config: {e}, using defaults")
+        return default_config
+
+
 class OSCHandler:
     """
     OSC Handler that binds OSC addresses with motor control actions.
+    Configuration is loaded from osc/rotorscope_config.json
     """
 
-    # Value to target position mapping for /start command
-    START_VALUE_MAP = {
-        0: 0,
-        1: 0.1,
-        2: 0.5,
-        3: 1.0,
-        4: 1.5,
-        5: 2.0
-    }
+    # Load config at class level
+    _config = load_osc_config()
 
-    # Speed settings (velocity, accel = vel/2, decel = vel/2)
-    MOVE_SPEED = 80000
-    MOVE_ACCEL = MOVE_SPEED // 2
-    MOVE_DECEL = MOVE_SPEED // 2
+    # Value to target position mapping (convert string keys to int)
+    START_VALUE_MAP = {int(k): v for k, v in _config.get('start_value_map', {}).items()}
+
+    # Speed settings from config
+    _speed = _config.get('speed', {})
+    MOVE_SPEED = _speed.get('velocity', 80000)
+    MOVE_ACCEL = _speed.get('acceleration', MOVE_SPEED // 2)
+    MOVE_DECEL = _speed.get('deceleration', MOVE_SPEED // 2)
+
+    # Position tolerance and broadcast interval
+    POSITION_TOLERANCE = _config.get('position_tolerance', 0.002)
+    BROADCAST_INTERVAL = _config.get('broadcast_interval', 0.05)
 
     def __init__(self, motor_process=None, on_log=None):
         """
@@ -262,9 +288,7 @@ class OSCHandler:
 
         self._log('info', f"Movement broadcaster started: slave {slave_idx} -> {target_pos}m (value={start_value})")
 
-        POSITION_TOLERANCE = 0.002  # 2mm tolerance
         last_sent_pos = None
-        broadcast_interval = 0.05  # 50ms
 
         while self._movement_active and self._running:
             try:
@@ -281,8 +305,8 @@ class OSCHandler:
                         self._osc_send("/movement", slave_idx, float(current_pos))
                         last_sent_pos = current_pos
 
-                    # Check if target reached
-                    if abs(current_pos - target_pos) <= POSITION_TOLERANCE:
+                    # Check if target reached (using config tolerance)
+                    if abs(current_pos - target_pos) <= self.POSITION_TOLERANCE:
                         self._log('info', f"Target reached: {current_pos:.4f}m")
 
                         # Send final position
@@ -294,7 +318,7 @@ class OSCHandler:
                         self._movement_active = False
                         break
 
-                time.sleep(broadcast_interval)
+                time.sleep(self.BROADCAST_INTERVAL)
 
             except Exception as e:
                 self._log('error', f"Movement broadcaster error: {e}")
@@ -531,20 +555,25 @@ if __name__ == "__main__":
     print("=" * 60)
     print("OSC Handler - Standalone Test Mode")
     print("=" * 60)
+    print(f"Config: osc/rotorscope_config.json")
     print(f"Listening on {args.ip}:{args.port}")
     print(f"Sending to {args.send_ip}:{args.port}")
     print()
     print("Value Mapping for /start:")
-    for val, pos in OSCHandler.START_VALUE_MAP.items():
+    for val, pos in sorted(OSCHandler.START_VALUE_MAP.items()):
         print(f"  {val} -> {pos}m")
     print()
     print(f"Speed Settings:")
     print(f"  Velocity: {OSCHandler.MOVE_SPEED}")
-    print(f"  Acceleration: {OSCHandler.MOVE_ACCEL} (vel/2)")
-    print(f"  Deceleration: {OSCHandler.MOVE_DECEL} (vel/2)")
+    print(f"  Acceleration: {OSCHandler.MOVE_ACCEL}")
+    print(f"  Deceleration: {OSCHandler.MOVE_DECEL}")
+    print()
+    print(f"Movement Settings:")
+    print(f"  Position Tolerance: {OSCHandler.POSITION_TOLERANCE}m")
+    print(f"  Broadcast Interval: {OSCHandler.BROADCAST_INTERVAL}s")
     print()
     print("Supported Commands:")
-    print("  /start [1-5]           - Move slave0 to mapped position")
+    print("  /start [0-5]           - Move slave0 to mapped position")
     print("                           Sends /movement during motion")
     print("                           Sends /reached when complete")
     print("  /move [slave] [pos]    - Move slave to position")

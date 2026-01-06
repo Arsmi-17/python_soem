@@ -26,44 +26,44 @@
             background: var(--bg-dark);
             color: var(--text-primary);
             min-height: 100vh;
-            padding: 20px;
+            padding: 12px;
         }
 
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            padding: 15px 20px;
+            margin-bottom: 12px;
+            padding: 10px 15px;
             background: var(--bg-panel);
             border: 1px solid var(--border-ui);
-            border-radius: 8px;
+            border-radius: 6px;
         }
 
         .header-left {
             display: flex;
             align-items: center;
-            gap: 20px;
+            gap: 15px;
         }
 
         .header h1 {
             color: var(--accent-blue);
-            font-size: 1.3rem;
+            font-size: 1.1rem;
         }
 
         .header .status {
             display: flex;
             align-items: center;
-            gap: 20px;
-            font-size: 0.85rem;
+            gap: 15px;
+            font-size: 0.75rem;
         }
 
         .status-dot {
-            width: 10px;
-            height: 10px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             display: inline-block;
-            margin-right: 5px;
+            margin-right: 4px;
         }
 
         .status-dot.disconnected { background: var(--accent-red); }
@@ -142,9 +142,9 @@
 
         .container {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 20px;
-            max-width: 1600px;
+            grid-template-columns: 280px 1fr;
+            gap: 15px;
+            max-width: 1400px;
             margin: 0 auto;
         }
 
@@ -152,29 +152,155 @@
             background: var(--bg-panel);
             border: 1px solid var(--border-ui);
             border-radius: 8px;
-            padding: 20px;
+            padding: 15px;
         }
 
         .section-title {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             text-transform: uppercase;
             letter-spacing: 1px;
             color: var(--accent-blue);
             border-bottom: 1px solid var(--border-ui);
-            padding-bottom: 10px;
-            margin-bottom: 15px;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
         }
 
         .status-controls {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 4px;
             align-items: center;
+        }
+
+        .status-controls .btn {
+            padding: 8px 14px;
+            font-size: 0.8rem;
+        }
+
+        /* Operation section - use multi-column grid layout */
+        .operation-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 12px;
+        }
+
+        /* Compact control blocks */
+        .control-block, .osc-block, .udp-block, .speed-block, .homing-block {
+            max-width: 320px;
+        }
+
+        /* PP Mode Layout */
+        .pp-row-1 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .pp-row-1 .control-block,
+        .pp-row-1 .speed-block,
+        .pp-row-1 .osc-block {
+            max-width: none;
+        }
+
+        .pp-row-2 {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr;
+            gap: 12px;
+        }
+
+        @media (max-width: 900px) {
+            .pp-row-1 {
+                grid-template-columns: 1fr 1fr;
+            }
+            .pp-row-1 .osc-block {
+                grid-column: span 2;
+            }
+            .pp-row-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Template block - larger for table display */
+        .template-block {
+            max-width: none;
+        }
+
+        /* Log block for PP mode */
+        .log-block {
+            background: var(--bg-card);
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-ui);
+        }
+
+        .log-block h4 {
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        .log-block #pp-log-window {
+            height: 280px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.7rem;
+            background: var(--bg-dark);
+            border-radius: 4px;
+            padding: 8px;
+        }
+
+        /* OSC block styling */
+        .osc-block {
+            background: var(--bg-card);
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid var(--accent-purple);
+        }
+
+        .osc-block h4 {
+            color: var(--accent-purple);
+            margin-bottom: 8px;
+            font-size: 0.75rem;
+        }
+
+        /* Compact buttons */
+        .btn {
+            padding: 6px 12px;
+            font-size: 0.75rem;
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 0.7rem;
+        }
+
+        /* Compact inputs */
+        input, select {
+            padding: 6px 8px;
+            font-size: 0.8rem;
+        }
+
+        input[type="number"] {
+            width: 80px;
+        }
+
+        /* Compact quick buttons grid */
+        .quick-btn-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 4px;
+        }
+
+        .quick-btn-grid .btn {
+            padding: 6px 4px;
+            font-size: 0.7rem;
         }
 
         .error-box {
@@ -274,15 +400,15 @@
 
         .control-block {
             background: var(--bg-card);
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 0;
         }
 
         .control-block h4 {
             color: var(--accent-blue);
-            font-size: 0.85rem;
-            margin-bottom: 12px;
+            font-size: 0.75rem;
+            margin-bottom: 8px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
@@ -297,13 +423,13 @@
 
         select, input[type="text"], input[type="number"] {
             width: 100%;
-            padding: 10px 12px;
+            padding: 6px 10px;
             background: var(--bg-dark);
             border: 1px solid var(--border-ui);
-            border-radius: 6px;
+            border-radius: 4px;
             color: var(--text-primary);
-            font-size: 0.9rem;
-            margin-bottom: 10px;
+            font-size: 0.8rem;
+            margin-bottom: 8px;
         }
 
         select:focus, input:focus {
@@ -314,31 +440,31 @@
         .position-btns {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
-            margin: 10px 0;
+            gap: 4px;
+            margin: 8px 0;
         }
 
         .position-btns button {
-            padding: 10px;
-            font-size: 0.8rem;
+            padding: 6px 4px;
+            font-size: 0.7rem;
         }
 
         .current-mode {
             background: rgba(63, 185, 80, 0.15);
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 8px;
             color: var(--accent-green);
             font-weight: 600;
-            font-size: 0.85rem;
+            font-size: 0.75rem;
         }
 
         .status-item {
             display: flex;
             justify-content: space-between;
-            padding: 10px 0;
+            padding: 6px 0;
             border-bottom: 1px solid var(--border-ui);
-            font-size: 0.85rem;
+            font-size: 0.75rem;
         }
 
         .status-label { color: var(--text-secondary); }
@@ -390,30 +516,30 @@
 
         .homing-block {
             background: rgba(88, 166, 255, 0.1);
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 12px 0;
             border: 1px solid var(--accent-blue);
         }
 
         .homing-block h4 {
             color: var(--accent-blue);
-            margin-bottom: 12px;
-            font-size: 0.85rem;
+            margin-bottom: 8px;
+            font-size: 0.75rem;
         }
 
         /* Speed Block Styles */
         .speed-block {
             background: var(--bg-card);
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 0;
             border: 1px solid var(--border-ui);
         }
 
         .speed-block h4 {
-            margin-bottom: 12px;
-            font-size: 0.85rem;
+            margin-bottom: 8px;
+            font-size: 0.75rem;
         }
 
         .speed-block.pp h4 { color: var(--accent-green); }
@@ -421,50 +547,50 @@
         .speed-block.pv h4 { color: var(--text-gold); }
 
         .speed-info {
-            font-size: 0.75rem;
+            font-size: 0.65rem;
             color: var(--text-secondary);
-            margin: 8px 0;
+            margin: 6px 0;
         }
 
         .config-label {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             color: var(--text-secondary);
-            margin-bottom: 3px;
+            margin-bottom: 2px;
         }
 
         /* Velocity Controls */
         .velocity-btns {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
-            gap: 8px;
-            margin-top: 10px;
+            gap: 6px;
+            margin-top: 8px;
         }
 
         .velocity-btns button {
-            padding: 15px 10px;
-            font-size: 0.9rem;
+            padding: 10px 8px;
+            font-size: 0.75rem;
         }
 
         /* UDP/OSC Section */
         .receiver-block {
             background: var(--bg-card);
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 0;
         }
 
         .receiver-block h4 {
             color: var(--accent-purple);
-            margin-bottom: 12px;
-            font-size: 0.85rem;
+            margin-bottom: 8px;
+            font-size: 0.75rem;
         }
 
         .receiver-status {
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-bottom: 10px;
-            font-size: 0.85rem;
+            gap: 6px;
+            margin-bottom: 8px;
+            font-size: 0.75rem;
         }
 
         @media (max-width: 1200px) {
@@ -476,47 +602,32 @@
         /* Template Section Styles */
         .template-block {
             background: var(--bg-card);
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 0;
             border: 1px solid var(--text-gold);
         }
 
         .template-block h4 {
             color: var(--text-gold);
-            margin-bottom: 12px;
-            font-size: 0.85rem;
-        }
-
-        /* OSC Section */
-        .osc-block {
-            background: var(--bg-card);
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-            border: 1px solid var(--text-gold);
-        }
-
-        .osc-block h4 {
-            color: var(--text-gold);
-            margin-bottom: 12px;
-            font-size: 0.85rem;
+            margin-bottom: 8px;
+            font-size: 0.8rem;
         }
 
         /* Log Window */
         #log-window {
-            height: 300px;
+            height: 200px;
             overflow-y: auto;
             font-family: monospace;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             background: var(--bg-card);
-            border-radius: 6px;
-            padding: 10px;
-            margin-top: 15px;
+            border-radius: 4px;
+            padding: 8px;
+            margin-top: 10px;
         }
 
         .log-entry {
-            padding: 3px 0;
+            padding: 2px 0;
             border-bottom: 1px solid rgba(48, 54, 61, 0.5);
         }
 
@@ -525,6 +636,110 @@
         .log-com { color: var(--accent-blue); }
         .log-wrn { color: var(--text-gold); }
         .log-err { color: var(--accent-red); }
+
+        /* Info Tooltip - floating at bottom right */
+        .info-tooltip {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .info-tooltip-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(88, 166, 255, 0.4);
+            transition: all 0.2s ease;
+        }
+
+        .info-tooltip-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 16px rgba(88, 166, 255, 0.5);
+        }
+
+        .info-tooltip-content {
+            display: none;
+            position: absolute;
+            bottom: 50px;
+            right: 0;
+            width: 320px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-ui);
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        .info-tooltip-content.show {
+            display: block;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .info-tooltip-content h3 {
+            color: var(--accent-blue);
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-ui);
+        }
+
+        .info-tooltip-content .step-info {
+            margin-bottom: 12px;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+        }
+
+        .info-tooltip-content .step-info.error {
+            background: rgba(248, 81, 73, 0.1);
+            border-left: 3px solid var(--accent-red);
+        }
+
+        .info-tooltip-content .step-info.success {
+            background: rgba(63, 185, 80, 0.1);
+            border-left: 3px solid var(--accent-green);
+        }
+
+        .info-tooltip-content .step-info h4 {
+            font-size: 0.8rem;
+            margin-bottom: 6px;
+        }
+
+        .info-tooltip-content .step-info.error h4 { color: var(--accent-red); }
+        .info-tooltip-content .step-info.success h4 { color: var(--accent-green); }
+
+        .info-tooltip-content .step-info ul {
+            list-style: none;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .info-tooltip-content .step-info li {
+            padding: 2px 0;
+        }
+
+        .info-tooltip-content .mode-info {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            padding-top: 10px;
+            border-top: 1px solid var(--border-ui);
+        }
+
+        .info-tooltip-content .mode-info strong {
+            color: var(--text-primary);
+        }
     </style>
 </head>
 <body>
@@ -553,343 +768,7 @@
     </div>
 
     <div class="container">
-        <!-- Instructions Section -->
-        <div class="section">
-            <h2 class="section-title">Instructions</h2>
-
-            <div id="step1" class="error-box">
-                <h3>Step 1: System Fault Detected</h3>
-                <ul>
-                    <li>Click <strong>Reset</strong> (in Real-time Status) to recover</li>
-                    <li>If error remains, use <strong>Clear Error</strong> for specific slave</li>
-                    <li>Once all slaves are Operational, Step 2 appears</li>
-                </ul>
-            </div>
-
-            <div id="step2" class="instruction-box hidden">
-                <h3>Step 2: Device Startup</h3>
-                <ul>
-                    <li>Select desired <strong>Operation Mode</strong></li>
-                    <li>Click <strong>Enable</strong> in Real-time Status section</li>
-                    <li>After enabling, Step 3 with controls will appear</li>
-                </ul>
-            </div>
-
-            <div id="step3" class="instruction-box hidden">
-                <h3 id="step3Title">Step 3: Mode Active</h3>
-                <ul id="step3List"></ul>
-            </div>
-
-            <div class="mode-info">
-                <strong>Mode Information:</strong><br><br>
-                <strong>CSP</strong> - Cyclic Sync Position: Real-time interactive positioning<br>
-                <strong>PP</strong> - Profile Position: Precise target positioning & templates<br>
-                <strong>PV</strong> - Profile Velocity: Continuous speed control
-            </div>
-        </div>
-
-        <!-- Operation Section -->
-        <div class="section">
-            <h2 class="section-title">Operation</h2>
-
-            <div id="errorControls">
-                <div class="control-block error-block">
-                    <h4>Clear Error</h4>
-                    <select id="clearErrorSlaveSelect" onchange="updateButtonStates()">
-                        <option value="">-- Select Slave --</option>
-                    </select>
-                    <button class="btn btn-clear-error" onclick="clearError()" style="width: 100%;" id="clearErrorBtn" disabled>Clear Error</button>
-                </div>
-            </div>
-
-            <div id="startupControls" class="hidden">
-                <div class="control-block">
-                    <h4>Operation Mode</h4>
-                    <div class="current-mode" id="currentModeDisplay">Selected Mode: CSP (Cyclic Sync Position)</div>
-                    <select id="modeSelector" onchange="changeMode()">
-                        <option value="8" selected>CSP - Cyclic Sync Position</option>
-                        <option value="1">PP - Profile Position</option>
-                        <option value="3">PV - Profile Velocity</option>
-                    </select>
-                </div>
-            </div>
-
-            <div id="modeActions" class="hidden">
-                <!-- CSP Actions -->
-                <div id="cspActions" class="hidden">
-                    <div class="control-block" id="cspMovementBlock">
-                        <h4>Custom Movement</h4>
-                        <select id="slaveSelect" onchange="updateButtonStates()">
-                            <option value="">-- Select Slave --</option>
-                        </select>
-                        <div class="position-btns" id="cspQuickBtns">
-                            <button class="btn btn-outline" onclick="moveTo(-1.0)" disabled>-1.0m</button>
-                            <button class="btn btn-outline" onclick="moveTo(-0.5)" disabled>-0.5m</button>
-                            <button class="btn btn-outline" onclick="moveTo(0.5)" disabled>+0.5m</button>
-                            <button class="btn btn-outline" onclick="moveTo(1.0)" disabled>+1.0m</button>
-                            <button class="btn btn-home" onclick="moveTo(0)" style="grid-column: span 2;" disabled>HOME (0m)</button>
-                            <button class="btn btn-outline" onclick="moveTo(-0.25)" disabled>-0.25m</button>
-                            <button class="btn btn-outline" onclick="moveTo(0.25)" disabled>+0.25m</button>
-                        </div>
-                        <input type="number" id="targetPosition" placeholder="Custom position (meters)" step="0.01">
-                        <button class="btn btn-primary" onclick="executeMove()" style="width: 100%; margin-bottom: 8px;" id="executeMoveBtn" disabled>Execute Move</button>
-                        <button class="btn btn-home" onclick="moveAllToHome()" style="width: 100%; margin-bottom: 8px;" id="allToHomeBtn" disabled>Move All to Home</button>
-                        <button class="btn btn-emergency" onclick="emergencyStop()" style="width: 100%;" id="emergencyStopBtn">EMERGENCY STOP</button>
-                    </div>
-
-                    <!-- CSP Speed Block -->
-                    <div class="speed-block csp" id="speedCSP">
-                        <h4>CSP Speed Settings</h4>
-                        <div class="config-label">Max Step (units/ms):</div>
-                        <input type="number" id="cspMaxStep" value="800" oninput="updateCSPEffective()">
-                        <div class="speed-info">Effective Velocity: <span id="cspEffectiveVel">800000</span> units/s</div>
-                        <button class="btn btn-primary" onclick="applyCSPSpeed()" style="width: 100%;">Apply CSP Speed</button>
-                    </div>
-
-                    <!-- UDP Receiver -->
-                    <div class="receiver-block" id="udpSection">
-                        <h4>UDP Receiver</h4>
-                        <div class="receiver-status">
-                            <span class="status-dot disconnected" id="udpStatusDot"></span>
-                            <span id="udpStatusText">Disconnected</span>
-                        </div>
-                        <div class="grid-2">
-                            <div>
-                                <div class="config-label">IP Address:</div>
-                                <input type="text" id="udpIp" value="0.0.0.0" style="margin: 0;">
-                            </div>
-                            <div>
-                                <div class="config-label">Port:</div>
-                                <input type="number" id="udpPort" value="9000" style="margin: 0;">
-                            </div>
-                        </div>
-                        <div class="grid-2" style="margin-top: 10px;">
-                            <button class="btn btn-enable" onclick="udpConnect()" id="udpConnectBtn">Connect</button>
-                            <button class="btn btn-disable" onclick="udpDisconnect()" id="udpDisconnectBtn" disabled>Disconnect</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- PP Actions -->
-                <div id="ppActions" class="hidden">
-                    <div class="control-block" id="ppMovementBlock">
-                        <h4>Custom Movement</h4>
-                        <select id="slaveSelectPP" onchange="updateButtonStates()">
-                            <option value="">-- Select Slave --</option>
-                        </select>
-                        <div class="position-btns" id="ppQuickBtns">
-                            <button class="btn btn-outline" onclick="moveToPP(-1.0)" disabled>-1.0m</button>
-                            <button class="btn btn-outline" onclick="moveToPP(-0.5)" disabled>-0.5m</button>
-                            <button class="btn btn-outline" onclick="moveToPP(0.5)" disabled>+0.5m</button>
-                            <button class="btn btn-outline" onclick="moveToPP(1.0)" disabled>+1.0m</button>
-                            <button class="btn btn-home" onclick="moveToPP(0)" style="grid-column: span 2;" disabled>HOME (0m)</button>
-                            <button class="btn btn-outline" onclick="moveToPP(-0.25)" disabled>-0.25m</button>
-                            <button class="btn btn-outline" onclick="moveToPP(0.25)" disabled>+0.25m</button>
-                        </div>
-                        <input type="number" id="targetPositionPP" placeholder="Custom position (meters)" step="0.01">
-                        <button class="btn btn-primary" onclick="executeMovePP()" style="width: 100%; margin-bottom: 8px;" id="executeMovePPBtn" disabled>Execute Move</button>
-                        <button class="btn btn-home" onclick="moveAllToHome()" style="width: 100%; margin-bottom: 8px;" id="allToHomePPBtn" disabled>Move All to Home</button>
-                        <button class="btn btn-emergency" onclick="emergencyStop()" style="width: 100%;">EMERGENCY STOP</button>
-                    </div>
-
-                    <!-- PP Speed Block -->
-                    <div class="speed-block pp" id="speedPP">
-                        <h4>PP Speed Settings</h4>
-                        <div class="config-label">Speed (x1000 units/s):</div>
-                        <input type="number" id="ppSpeed" value="80" oninput="updatePPEffective()">
-                        <div class="speed-info">
-                            Velocity: <span id="ppEffectiveVel">80000</span> units/s |
-                            Accel/Decel: <span id="ppEffectiveAccel">40000</span> units/s²
-                        </div>
-                        <button class="btn btn-enable" onclick="applyPPSpeed()" style="width: 100%;">Apply PP Speed</button>
-                    </div>
-
-                    <!-- Template Control -->
-                    <div class="template-block" id="templateSection">
-                        <h4>Template Execution</h4>
-
-                        <!-- Config file dropdown -->
-                        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-                            <select id="configFileName" style="flex: 1; margin: 0;">
-                                <option value="">-- Select Config --</option>
-                            </select>
-                            <button class="btn btn-outline" onclick="refreshConfigList()" style="width: auto; padding: 10px 12px;" title="Refresh list">↻</button>
-                            <button class="btn btn-primary" onclick="loadConfigFile()" style="width: auto; padding: 10px 15px;">Load</button>
-                        </div>
-
-                        <!-- Steps per Meter Config -->
-                        <div style="background: var(--bg-dark); padding: 10px; border-radius: 6px; margin-bottom: 10px;">
-                            <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end;">
-                                <div>
-                                    <div class="config-label">Actual Steps/m:</div>
-                                    <input type="number" id="actualStepsInput" value="792914" style="margin: 0; padding: 8px;">
-                                </div>
-                                <div>
-                                    <div class="config-label">Raw Steps/m:</div>
-                                    <input type="number" id="rawStepsInput" value="202985985" style="margin: 0; padding: 8px;">
-                                </div>
-                                <button class="btn btn-primary" onclick="applyStepsConfig()" style="height: 36px; padding: 8px 12px;">Apply</button>
-                            </div>
-                        </div>
-
-                        <!-- Config Info -->
-                        <div id="configInfo" style="background: var(--bg-dark); padding: 10px; border-radius: 6px; margin-bottom: 10px; display: none;">
-                            <div style="font-weight: bold; margin-bottom: 8px; color: var(--text-primary); font-size: 0.85rem;">Config Info</div>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.8rem;">
-                                <div>
-                                    <div class="config-label">Operation Mode:</div>
-                                    <div id="cfgOpMode" style="color: var(--text-gold);">--</div>
-                                </div>
-                                <div>
-                                    <div class="config-label">Slave Count:</div>
-                                    <div id="cfgSlaveCount">--</div>
-                                </div>
-                                <div>
-                                    <div class="config-label">Movement Slaves:</div>
-                                    <div id="cfgMovementSlaves" style="color: var(--accent-green);">--</div>
-                                </div>
-                                <div>
-                                    <div class="config-label">Movement Speed:</div>
-                                    <div id="cfgMovementSpeed">--</div>
-                                </div>
-                                <div>
-                                    <div class="config-label">Rotation Slaves:</div>
-                                    <div id="cfgRotationSlaves" style="color: var(--accent-blue);">--</div>
-                                </div>
-                                <div>
-                                    <div class="config-label">Rotation Speed:</div>
-                                    <div id="cfgRotationSpeed">--</div>
-                                </div>
-                                <div style="grid-column: span 2;">
-                                    <div class="config-label">Movement Mode:</div>
-                                    <div id="cfgMovementMode" style="color: var(--accent-green);">--</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Template Steps Table -->
-                        <div style="background: var(--bg-dark); padding: 10px; border-radius: 6px; margin-bottom: 10px; overflow-x: auto; max-height: 200px; overflow-y: auto;">
-                            <div id="templateName" style="font-weight: bold; margin-bottom: 8px; color: var(--text-gold); font-size: 0.85rem;">No template loaded</div>
-                            <table id="templateTable" style="width: 100%; font-size: 0.75rem;">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 30px; padding: 6px 4px;">#</th>
-                                        <th style="padding: 6px 4px;">Name</th>
-                                        <th style="width: 60px; padding: 6px 4px;">Type</th>
-                                        <th style="padding: 6px 4px;">Position</th>
-                                        <th style="width: 50px; padding: 6px 4px;">Delay</th>
-                                        <th style="width: 60px; padding: 6px 4px;">Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="templateTableBody">
-                                    <tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 15px;">Load a config file to see steps</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <!-- Run buttons -->
-                        <div class="grid-2" style="margin-bottom: 8px;">
-                            <button class="btn btn-enable" onclick="runTemplate()">▶ Run Template</button>
-                            <button class="btn btn-primary" onclick="runTemplateLoop()">Loop Template</button>
-                        </div>
-                        <button class="btn btn-emergency" onclick="emergencyStop()" style="width: 100%; font-size: 1em; padding: 12px;">STOP</button>
-                    </div>
-
-                    <!-- OSC Control -->
-                    <div class="osc-block" id="oscSection">
-                        <h4>OSC Control</h4>
-
-                        <div class="receiver-status">
-                            <span class="status-dot disconnected" id="oscStatusDot"></span>
-                            <span id="oscStatusText">Disconnected</span>
-                        </div>
-
-                        <!-- Connection Info (shown when connected) -->
-                        <div id="oscConnectionInfo" style="display: none; margin-bottom: 10px; padding: 8px; background: var(--bg-dark); border-radius: 4px; font-size: 0.75rem;">
-                            <div id="oscRecvInfo" style="color: var(--accent-blue); margin-bottom: 3px;"></div>
-                            <div id="oscSendInfo" style="color: var(--accent-green);"></div>
-                        </div>
-
-                        <!-- OSC Mode Selection -->
-                        <div class="config-label" style="margin-bottom: 5px;">Mode:</div>
-                        <div style="display: flex; gap: 12px; margin-bottom: 10px;">
-                            <label style="display: flex; align-items: center; gap: 5px; font-size: 0.8rem; cursor: pointer;">
-                                <input type="radio" name="oscMode" value="1" style="margin: 0; width: auto;">
-                                <span>Receive</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 5px; font-size: 0.8rem; cursor: pointer;">
-                                <input type="radio" name="oscMode" value="2" style="margin: 0; width: auto;">
-                                <span>Send</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 5px; font-size: 0.8rem; cursor: pointer;">
-                                <input type="radio" name="oscMode" value="3" checked style="margin: 0; width: auto;">
-                                <span>Both</span>
-                            </label>
-                        </div>
-
-                        <!-- Receiver Settings -->
-                        <div style="background: var(--bg-dark); padding: 8px; border-radius: 4px; margin-bottom: 8px;">
-                            <div class="config-label" style="color: var(--accent-blue); margin-bottom: 5px;">Receiver (Listen on):</div>
-                            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px;">
-                                <div>
-                                    <input type="text" id="oscRecvIp" value="0.0.0.0" placeholder="0.0.0.0" style="margin: 0;">
-                                </div>
-                                <div>
-                                    <input type="number" id="oscRecvPort" value="8000" placeholder="8000" style="margin: 0;">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Sender Settings -->
-                        <div style="background: var(--bg-dark); padding: 8px; border-radius: 4px; margin-bottom: 10px;">
-                            <div class="config-label" style="color: var(--accent-green); margin-bottom: 5px;">Sender (Send to):</div>
-                            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px;">
-                                <div>
-                                    <input type="text" id="oscSendIp" value="127.0.0.1" placeholder="127.0.0.1" style="margin: 0;">
-                                </div>
-                                <div>
-                                    <input type="number" id="oscSendPort" value="9000" placeholder="9000" style="margin: 0;">
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="grid-2">
-                            <button class="btn btn-enable" onclick="oscConnect()" id="oscConnectBtn">Start OSC</button>
-                            <button class="btn btn-disable" onclick="oscDisconnect()" id="oscDisconnectBtn" disabled>Stop OSC</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- PV Actions -->
-                <div id="pvActions" class="hidden">
-                    <div class="control-block" id="pvMovementBlock">
-                        <h4>Velocity Control</h4>
-                        <select id="slaveSelectVel" onchange="updateButtonStates()">
-                            <option value="">-- Select Slave --</option>
-                        </select>
-                        <div class="velocity-btns" id="pvVelocityBtns">
-                            <button class="btn btn-enable" onclick="velocityForward()" id="velForwardBtn" disabled>▲ FORWARD</button>
-                            <button class="btn btn-emergency" onclick="emergencyStop()">STOP</button>
-                            <button class="btn btn-primary" onclick="velocityBackward()" id="velBackwardBtn" disabled>▼ BACKWARD</button>
-                        </div>
-                    </div>
-
-                    <!-- PV Speed Block -->
-                    <div class="speed-block pv" id="speedPV">
-                        <h4>PV Speed Settings</h4>
-                        <div class="config-label">Speed (x1000 units/s):</div>
-                        <input type="number" id="pvSpeed" value="50" oninput="updatePVEffective()">
-                        <div class="speed-info">
-                            Velocity: <span id="pvEffectiveVel">50000</span> units/s |
-                            Accel/Decel: <span id="pvEffectiveAccel">25000</span> units/s²
-                        </div>
-                        <button class="btn btn-gold" onclick="applyPVSpeed()" style="width: 100%;">Apply PV Speed</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Real-time Status -->
+        <!-- Real-time Status (Left 25%) -->
         <div class="section">
             <h2 class="section-title">
                 Real-time Status
@@ -953,6 +832,332 @@
             <div id="log-window"></div>
             <button class="btn btn-outline" onclick="clearLogs()" style="width: 100%; margin-top: 10px;">Clear Logs</button>
         </div>
+
+        <!-- Operation Section (Right 75%) -->
+        <div class="section">
+            <h2 class="section-title">Operation</h2>
+
+            <div id="errorControls">
+                <div class="control-block error-block">
+                    <h4>Clear Error</h4>
+                    <select id="clearErrorSlaveSelect" onchange="updateButtonStates()">
+                        <option value="">-- Select Slave --</option>
+                    </select>
+                    <button class="btn btn-clear-error" onclick="clearError()" style="width: 100%;" id="clearErrorBtn" disabled>Clear Error</button>
+                </div>
+            </div>
+
+            <div id="startupControls" class="hidden">
+                <div class="control-block">
+                    <h4>Operation Mode</h4>
+                    <div class="current-mode" id="currentModeDisplay">Selected Mode: CSP (Cyclic Sync Position)</div>
+                    <select id="modeSelector" onchange="changeMode()">
+                        <option value="8" selected>CSP - Cyclic Sync Position</option>
+                        <option value="1">PP - Profile Position</option>
+                        <option value="3">PV - Profile Velocity</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="modeActions" class="hidden">
+                <!-- CSP Actions -->
+                <div id="cspActions" class="hidden">
+                    <div class="operation-grid">
+                    <div class="control-block" id="cspMovementBlock">
+                        <h4>Custom Movement</h4>
+                        <select id="slaveSelect" onchange="updateButtonStates()">
+                            <option value="">-- Select Slave --</option>
+                        </select>
+                        <div class="position-btns" id="cspQuickBtns">
+                            <button class="btn btn-outline" onclick="moveTo(-1.0)" disabled>-1.0m</button>
+                            <button class="btn btn-outline" onclick="moveTo(-0.5)" disabled>-0.5m</button>
+                            <button class="btn btn-outline" onclick="moveTo(0.5)" disabled>+0.5m</button>
+                            <button class="btn btn-outline" onclick="moveTo(1.0)" disabled>+1.0m</button>
+                            <button class="btn btn-home" onclick="moveTo(0)" style="grid-column: span 2;" disabled>HOME (0m)</button>
+                            <button class="btn btn-outline" onclick="moveTo(-0.25)" disabled>-0.25m</button>
+                            <button class="btn btn-outline" onclick="moveTo(0.25)" disabled>+0.25m</button>
+                        </div>
+                        <input type="number" id="targetPosition" placeholder="Custom position (meters)" step="0.01">
+                        <button class="btn btn-primary" onclick="executeMove()" style="width: 100%; margin-bottom: 8px;" id="executeMoveBtn" disabled>Execute Move</button>
+                        <button class="btn btn-home" onclick="moveAllToHome()" style="width: 100%; margin-bottom: 8px;" id="allToHomeBtn" disabled>Move All to Home</button>
+                        <button class="btn btn-emergency" onclick="emergencyStop()" style="width: 100%;" id="emergencyStopBtn">EMERGENCY STOP</button>
+                    </div>
+
+                    <!-- CSP Speed Block -->
+                    <div class="speed-block csp" id="speedCSP">
+                        <h4>CSP Speed Settings</h4>
+                        <div class="config-label">Max Step (units/ms):</div>
+                        <input type="number" id="cspMaxStep" value="800" oninput="updateCSPEffective()">
+                        <div class="speed-info">Effective Velocity: <span id="cspEffectiveVel">800000</span> units/s</div>
+                        <button class="btn btn-primary" onclick="applyCSPSpeed()" style="width: 100%;">Apply CSP Speed</button>
+                    </div>
+
+                    <!-- UDP Receiver -->
+                    <div class="receiver-block" id="udpSection">
+                        <h4>UDP Receiver</h4>
+                        <div class="receiver-status">
+                            <span class="status-dot disconnected" id="udpStatusDot"></span>
+                            <span id="udpStatusText">Disconnected</span>
+                        </div>
+                        <div class="grid-2">
+                            <div>
+                                <div class="config-label">IP Address:</div>
+                                <input type="text" id="udpIp" value="0.0.0.0" style="margin: 0;">
+                            </div>
+                            <div>
+                                <div class="config-label">Port:</div>
+                                <input type="number" id="udpPort" value="9000" style="margin: 0;">
+                            </div>
+                        </div>
+                        <div class="grid-2" style="margin-top: 10px;">
+                            <button class="btn btn-enable" onclick="udpConnect()" id="udpConnectBtn">Connect</button>
+                            <button class="btn btn-disable" onclick="udpDisconnect()" id="udpDisconnectBtn" disabled>Disconnect</button>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- PP Actions -->
+                <div id="ppActions" class="hidden">
+                    <!-- Row 1: Custom | Speed | OSC -->
+                    <div class="pp-row-1">
+                        <div class="control-block" id="ppMovementBlock">
+                            <h4>Custom Movement</h4>
+                            <select id="slaveSelectPP" onchange="updateButtonStates()">
+                                <option value="">-- Select Slave --</option>
+                            </select>
+                            <div class="position-btns" id="ppQuickBtns">
+                                <button class="btn btn-outline" onclick="moveToPP(-1.0)" disabled>-1.0m</button>
+                                <button class="btn btn-outline" onclick="moveToPP(-0.5)" disabled>-0.5m</button>
+                                <button class="btn btn-outline" onclick="moveToPP(0.5)" disabled>+0.5m</button>
+                                <button class="btn btn-outline" onclick="moveToPP(1.0)" disabled>+1.0m</button>
+                                <button class="btn btn-home" onclick="moveToPP(0)" style="grid-column: span 2;" disabled>HOME (0m)</button>
+                                <button class="btn btn-outline" onclick="moveToPP(-0.25)" disabled>-0.25m</button>
+                                <button class="btn btn-outline" onclick="moveToPP(0.25)" disabled>+0.25m</button>
+                            </div>
+                            <input type="number" id="targetPositionPP" placeholder="Custom position (meters)" step="0.01">
+                            <button class="btn btn-primary" onclick="executeMovePP()" style="width: 100%; margin-bottom: 8px;" id="executeMovePPBtn" disabled>Execute Move</button>
+                            <button class="btn btn-home" onclick="moveAllToHome()" style="width: 100%; margin-bottom: 8px;" id="allToHomePPBtn" disabled>Move All to Home</button>
+                            <button class="btn btn-emergency" onclick="emergencyStop()" style="width: 100%;">EMERGENCY STOP</button>
+                        </div>
+
+                        <!-- PP Speed Block -->
+                        <div class="speed-block pp" id="speedPP">
+                            <h4>PP Speed Settings</h4>
+                            <div class="config-label">Speed (x1000 units/s):</div>
+                            <input type="number" id="ppSpeed" value="80" oninput="updatePPEffective()">
+                            <div class="speed-info">
+                                Velocity: <span id="ppEffectiveVel">80000</span> units/s |
+                                Accel/Decel: <span id="ppEffectiveAccel">40000</span> units/s²
+                            </div>
+                            <button class="btn btn-enable" onclick="applyPPSpeed()" style="width: 100%;">Apply PP Speed</button>
+                        </div>
+
+                        <!-- OSC Control -->
+                        <div class="osc-block" id="oscSection">
+                            <h4>OSC Control</h4>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <span class="status-dot disconnected" id="oscStatusDot"></span>
+                                <span id="oscStatusText" style="font-size: 0.75rem;">Disconnected</span>
+                            </div>
+                            <div id="oscConnectionInfo" style="display: none; margin-bottom: 8px; padding: 6px; background: rgba(88, 166, 255, 0.1); border-radius: 4px; font-size: 0.7rem;">
+                                <div id="oscRecvInfo" style="color: var(--accent-blue); margin-bottom: 2px;"></div>
+                                <div id="oscSendInfo" style="color: var(--accent-green);"></div>
+                            </div>
+                            <div style="display: flex; gap: 10px; margin-bottom: 8px; font-size: 0.75rem;">
+                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="radio" name="oscMode" value="1" style="margin: 0; width: auto;">
+                                    <span>Recv</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="radio" name="oscMode" value="2" style="margin: 0; width: auto;">
+                                    <span>Send</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="radio" name="oscMode" value="3" checked style="margin: 0; width: auto;">
+                                    <span>Both</span>
+                                </label>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
+                                <div>
+                                    <div class="config-label" style="color: var(--accent-blue); font-size: 0.65rem;">Listen:</div>
+                                    <input type="text" id="oscRecvIp" value="0.0.0.0" style="margin: 0; padding: 4px; font-size: 0.7rem;">
+                                    <input type="number" id="oscRecvPort" value="8000" style="margin: 0; padding: 4px; font-size: 0.7rem; width: 100%;">
+                                </div>
+                                <div>
+                                    <div class="config-label" style="color: var(--accent-green); font-size: 0.65rem;">Send to:</div>
+                                    <input type="text" id="oscSendIp" value="127.0.0.1" style="margin: 0; padding: 4px; font-size: 0.7rem;">
+                                    <input type="number" id="oscSendPort" value="9000" style="margin: 0; padding: 4px; font-size: 0.7rem; width: 100%;">
+                                </div>
+                            </div>
+                            <div class="grid-2">
+                                <button class="btn btn-enable btn-sm" onclick="oscConnect()" id="oscConnectBtn">Start</button>
+                                <button class="btn btn-disable btn-sm" onclick="oscDisconnect()" id="oscDisconnectBtn" disabled>Stop</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Template | Log -->
+                    <div class="pp-row-2">
+                        <!-- Template Control -->
+                        <div class="template-block" id="templateSection">
+                            <h4>Template Execution</h4>
+                            <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                                <select id="configFileName" style="flex: 1; margin: 0;">
+                                    <option value="">-- Select Config --</option>
+                                </select>
+                                <button class="btn btn-outline" onclick="refreshConfigList()" style="width: auto; padding: 8px 10px;" title="Refresh list">↻</button>
+                                <button class="btn btn-primary" onclick="loadConfigFile()" style="width: auto; padding: 8px 12px;">Load</button>
+                            </div>
+                            <div style="background: var(--bg-dark); padding: 8px; border-radius: 6px; margin-bottom: 8px;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: end;">
+                                    <div>
+                                        <div class="config-label">Actual Steps/m:</div>
+                                        <input type="number" id="actualStepsInput" value="792914" style="margin: 0; padding: 6px;">
+                                    </div>
+                                    <div>
+                                        <div class="config-label">Raw Steps/m:</div>
+                                        <input type="number" id="rawStepsInput" value="202985985" style="margin: 0; padding: 6px;">
+                                    </div>
+                                    <button class="btn btn-primary btn-sm" onclick="applyStepsConfig()">Apply</button>
+                                </div>
+                            </div>
+                            <div id="configInfo" style="background: var(--bg-dark); padding: 8px; border-radius: 6px; margin-bottom: 8px; display: none;">
+                                <div style="font-weight: bold; margin-bottom: 6px; color: var(--text-primary); font-size: 0.8rem;">Config Info</div>
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; font-size: 0.75rem;">
+                                    <div>
+                                        <div class="config-label">Op Mode:</div>
+                                        <div id="cfgOpMode" style="color: var(--text-gold);">--</div>
+                                    </div>
+                                    <div>
+                                        <div class="config-label">Slaves:</div>
+                                        <div id="cfgSlaveCount">--</div>
+                                    </div>
+                                    <div>
+                                        <div class="config-label">Movement:</div>
+                                        <div id="cfgMovementSlaves" style="color: var(--accent-green);">--</div>
+                                    </div>
+                                    <div>
+                                        <div class="config-label">Rotation:</div>
+                                        <div id="cfgRotationSlaves" style="color: var(--accent-blue);">--</div>
+                                    </div>
+                                    <div>
+                                        <div class="config-label">Mov Speed:</div>
+                                        <div id="cfgMovementSpeed">--</div>
+                                    </div>
+                                    <div>
+                                        <div class="config-label">Rot Speed:</div>
+                                        <div id="cfgRotationSpeed">--</div>
+                                    </div>
+                                    <div style="grid-column: span 2;">
+                                        <div class="config-label">Mode:</div>
+                                        <div id="cfgMovementMode" style="color: var(--accent-green);">--</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="background: var(--bg-dark); padding: 8px; border-radius: 6px; margin-bottom: 8px; overflow-x: auto; max-height: 180px; overflow-y: auto;">
+                                <div id="templateName" style="font-weight: bold; margin-bottom: 6px; color: var(--text-gold); font-size: 0.8rem;">No template loaded</div>
+                                <table id="templateTable" style="width: 100%; font-size: 0.7rem;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 25px; padding: 4px;">#</th>
+                                            <th style="padding: 4px;">Name</th>
+                                            <th style="width: 55px; padding: 4px;">Type</th>
+                                            <th style="padding: 4px;">Position</th>
+                                            <th style="width: 45px; padding: 4px;">Delay</th>
+                                            <th style="width: 50px; padding: 4px;">Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="templateTableBody">
+                                        <tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 12px;">Load a config file to see steps</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="grid-2" style="margin-bottom: 8px;">
+                                <button class="btn btn-enable" onclick="runTemplate()">▶ Run</button>
+                                <button class="btn btn-primary" onclick="runTemplateLoop()">Loop</button>
+                            </div>
+                            <button class="btn btn-emergency" onclick="emergencyStop()" style="width: 100%; padding: 10px;">STOP</button>
+                        </div>
+
+                        <!-- Log Window (moved from left panel) -->
+                        <div class="log-block" id="ppLogSection">
+                            <h4>System Log</h4>
+                            <div id="pp-log-window"></div>
+                            <button class="btn btn-outline btn-sm" onclick="clearPPLogs()" style="width: 100%; margin-top: 8px;">Clear Logs</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PV Actions -->
+                <div id="pvActions" class="hidden">
+                    <div class="operation-grid">
+                    <div class="control-block" id="pvMovementBlock">
+                        <h4>Velocity Control</h4>
+                        <select id="slaveSelectVel" onchange="updateButtonStates()">
+                            <option value="">-- Select Slave --</option>
+                        </select>
+                        <div class="velocity-btns" id="pvVelocityBtns">
+                            <button class="btn btn-enable" onclick="velocityForward()" id="velForwardBtn" disabled>▲ FORWARD</button>
+                            <button class="btn btn-emergency" onclick="emergencyStop()">STOP</button>
+                            <button class="btn btn-primary" onclick="velocityBackward()" id="velBackwardBtn" disabled>▼ BACKWARD</button>
+                        </div>
+                    </div>
+
+                    <!-- PV Speed Block -->
+                    <div class="speed-block pv" id="speedPV">
+                        <h4>PV Speed Settings</h4>
+                        <div class="config-label">Speed (x1000 units/s):</div>
+                        <input type="number" id="pvSpeed" value="50" oninput="updatePVEffective()">
+                        <div class="speed-info">
+                            Velocity: <span id="pvEffectiveVel">50000</span> units/s |
+                            Accel/Decel: <span id="pvEffectiveAccel">25000</span> units/s²
+                        </div>
+                        <button class="btn btn-gold" onclick="applyPVSpeed()" style="width: 100%;">Apply PV Speed</button>
+                    </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Info Tooltip (Bottom Right) -->
+    <div class="info-tooltip">
+        <button class="info-tooltip-btn" onclick="toggleInfoTooltip()">?</button>
+        <div class="info-tooltip-content" id="infoTooltipContent">
+            <h3>Quick Guide</h3>
+
+            <div id="tipStep1" class="step-info error">
+                <h4>Step 1: System Fault Detected</h4>
+                <ul>
+                    <li>Click <strong>Reset</strong> to recover</li>
+                    <li>Use <strong>Clear Error</strong> for specific slave</li>
+                    <li>Once operational, proceed to Step 2</li>
+                </ul>
+            </div>
+
+            <div id="tipStep2" class="step-info success" style="display: none;">
+                <h4>Step 2: Device Startup</h4>
+                <ul>
+                    <li>Select desired <strong>Operation Mode</strong></li>
+                    <li>Click <strong>Enable</strong> in status section</li>
+                    <li>After enabling, controls become active</li>
+                </ul>
+            </div>
+
+            <div id="tipStep3" class="step-info success" style="display: none;">
+                <h4 id="tipStep3Title">Step 3: Mode Active</h4>
+                <ul id="tipStep3List"></ul>
+            </div>
+
+            <div class="mode-info">
+                <strong>Mode Information:</strong><br>
+                <strong>CSP</strong> - Real-time positioning<br>
+                <strong>PP</strong> - Precise target & templates<br>
+                <strong>PV</strong> - Continuous speed control
+            </div>
+        </div>
     </div>
 
     <script>
@@ -971,6 +1176,57 @@
                 window.location.href = 'ui.html';
             }
         }
+
+        // Toggle info tooltip
+        function toggleInfoTooltip() {
+            const content = document.getElementById('infoTooltipContent');
+            content.classList.toggle('show');
+        }
+
+        // Update info tooltip steps based on system state
+        function updateInfoTooltipSteps() {
+            const tipStep1 = document.getElementById('tipStep1');
+            const tipStep2 = document.getElementById('tipStep2');
+            const tipStep3 = document.getElementById('tipStep3');
+            const tipStep3Title = document.getElementById('tipStep3Title');
+            const tipStep3List = document.getElementById('tipStep3List');
+
+            if (hasFault) {
+                tipStep1.style.display = 'block';
+                tipStep2.style.display = 'none';
+                tipStep3.style.display = 'none';
+            } else if (!isEnabled) {
+                tipStep1.style.display = 'none';
+                tipStep2.style.display = 'block';
+                tipStep3.style.display = 'none';
+            } else {
+                tipStep1.style.display = 'none';
+                tipStep2.style.display = 'none';
+                tipStep3.style.display = 'block';
+
+                const modeNames = {8: 'CSP', 1: 'PP', 3: 'PV'};
+                tipStep3Title.textContent = `Step 3: ${modeNames[selectedMode] || 'Mode'} Active`;
+
+                let tips = '';
+                if (selectedMode === 8) {
+                    tips = '<li>Use quick buttons for preset positions</li><li>Enter custom position and click Move</li><li>Real-time interactive control</li>';
+                } else if (selectedMode === 1) {
+                    tips = '<li>Use quick buttons or enter position</li><li>Load config for templates</li><li>Run template sequences</li>';
+                } else if (selectedMode === 3) {
+                    tips = '<li>Use Forward/Backward buttons</li><li>Adjust speed with slider</li><li>Click Stop to halt motion</li>';
+                }
+                tipStep3List.innerHTML = tips;
+            }
+        }
+
+        // Close tooltip when clicking outside
+        document.addEventListener('click', function(e) {
+            const tooltip = document.querySelector('.info-tooltip');
+            const content = document.getElementById('infoTooltipContent');
+            if (!tooltip.contains(e.target) && content.classList.contains('show')) {
+                content.classList.remove('show');
+            }
+        });
 
         // Connect WebSocket
         function connectWS() {
@@ -1127,26 +1383,25 @@
             }
         }
 
-        // Update interface state (steps visibility)
+        // Update interface state (controls visibility)
         function updateInterfaceState() {
-            // Step 1: Show when there's a fault
-            document.getElementById('step1').classList.toggle('hidden', !hasFault);
+            // Error controls: Show when there's a fault
             document.getElementById('errorControls').classList.toggle('hidden', !hasFault);
 
-            // Step 2: Show when no fault and not enabled
-            const showStep2 = !hasFault && !isEnabled;
-            document.getElementById('step2').classList.toggle('hidden', !showStep2);
-            document.getElementById('startupControls').classList.toggle('hidden', !showStep2);
+            // Startup controls: Show when no fault and not enabled
+            const showStartup = !hasFault && !isEnabled;
+            document.getElementById('startupControls').classList.toggle('hidden', !showStartup);
 
-            // Step 3: Show when enabled
-            const showStep3 = isEnabled;
-            document.getElementById('step3').classList.toggle('hidden', !showStep3);
-            document.getElementById('modeActions').classList.toggle('hidden', !showStep3);
+            // Mode actions: Show when enabled
+            const showModeActions = isEnabled;
+            document.getElementById('modeActions').classList.toggle('hidden', !showModeActions);
 
             if (isEnabled) {
                 showCorrectModeActions();
-                updateStep3Instructions();
             }
+
+            // Update info tooltip steps
+            updateInfoTooltipSteps();
         }
 
         // Update all button states based on fault/enabled state
@@ -1282,37 +1537,6 @@
                 document.getElementById('ppActions').classList.remove('hidden');
             } else if (selectedMode === 3) {
                 document.getElementById('pvActions').classList.remove('hidden');
-            }
-        }
-
-        function updateStep3Instructions() {
-            const title = document.getElementById('step3Title');
-            const list = document.getElementById('step3List');
-
-            if (selectedMode === 8) {
-                title.textContent = 'Step 3: CSP Mode Active';
-                list.innerHTML = `
-                    <li>Select a slave from the dropdown to control</li>
-                    <li>Use quick move buttons or enter custom position</li>
-                    <li>Adjust <strong>CSP Speed</strong> settings as needed</li>
-                    <li>Use UDP Receiver for external control integration</li>
-                `;
-            } else if (selectedMode === 1) {
-                title.textContent = 'Step 3: PP Mode Active';
-                list.innerHTML = `
-                    <li>Use Custom Movement to move individual slaves</li>
-                    <li>Load and run templates for automated sequences</li>
-                    <li>Adjust <strong>PP Speed</strong> for velocity and acceleration</li>
-                    <li>Use OSC Control for external application integration</li>
-                `;
-            } else if (selectedMode === 3) {
-                title.textContent = 'Step 3: PV Mode Active';
-                list.innerHTML = `
-                    <li>Select a slave to control</li>
-                    <li>Use Forward/Backward for continuous motion</li>
-                    <li>Adjust <strong>PV Speed</strong> before starting motion</li>
-                    <li>Press STOP to halt motion immediately</li>
-                `;
             }
         }
 
@@ -2031,19 +2255,39 @@
             }
         }
 
-        // Logging
+        // Logging - writes to both main log and PP log
         function log(msg, type = 'sys') {
-            const logWindow = document.getElementById('log-window');
             const time = new Date().toLocaleTimeString();
-            const entry = document.createElement('div');
-            entry.className = 'log-entry';
-            entry.innerHTML = `<span class="log-ts">${time}</span><span class="log-${type}">${msg}</span>`;
-            logWindow.appendChild(entry);
-            logWindow.scrollTop = logWindow.scrollHeight;
+            const entryHtml = `<span class="log-ts">${time}</span><span class="log-${type}">${msg}</span>`;
+
+            // Main log window (left panel)
+            const logWindow = document.getElementById('log-window');
+            if (logWindow) {
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerHTML = entryHtml;
+                logWindow.appendChild(entry);
+                logWindow.scrollTop = logWindow.scrollHeight;
+            }
+
+            // PP mode log window (right panel)
+            const ppLogWindow = document.getElementById('pp-log-window');
+            if (ppLogWindow) {
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerHTML = entryHtml;
+                ppLogWindow.appendChild(entry);
+                ppLogWindow.scrollTop = ppLogWindow.scrollHeight;
+            }
         }
 
         function clearLogs() {
             document.getElementById('log-window').innerHTML = '';
+        }
+
+        function clearPPLogs() {
+            const ppLogWindow = document.getElementById('pp-log-window');
+            if (ppLogWindow) ppLogWindow.innerHTML = '';
         }
 
         // Initialize

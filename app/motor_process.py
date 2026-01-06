@@ -637,20 +637,41 @@ class MotorProcess:
                 print(f"[OSC] Parse error: {e}")
                 return None, None
 
-        # OSC value to position mapping for /start command
-        OSC_START_VALUE_MAP = {
-            0: 0,
-            1: 0.1,
-            2: 0.5,
-            3: 1.0,
-            4: 1.5,
-            5: 2.0
-        }
+        # Load OSC config from JSON file
+        def load_osc_config():
+            """Load OSC configuration from rotorscope_config.json"""
+            import os as os_module  # Local import to avoid scope issues
+            config_path = os_module.path.join(os_module.path.dirname(__file__), 'osc', 'rotorscope_config.json')
+            default_config = {
+                "speed": {"velocity": 80000, "acceleration": 40000, "deceleration": 40000},
+                "start_value_map": {"0": 0, "1": 0.1, "2": 0.5, "3": 1.0, "4": 1.5, "5": 2.0},
+                "position_tolerance": 0.002,
+                "broadcast_interval": 0.05
+            }
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    print(f"[OSC] Loaded config from {config_path}")
+                    return config
+            except Exception as e:
+                print(f"[OSC] Could not load config: {e}, using defaults")
+                return default_config
 
-        # OSC movement speed settings
-        OSC_MOVE_SPEED = 80000  # velocity
-        OSC_MOVE_ACCEL = OSC_MOVE_SPEED // 2  # acceleration (speed / 2)
-        OSC_MOVE_DECEL = OSC_MOVE_SPEED // 2  # deceleration (speed / 2)
+        # Load OSC config
+        osc_config = load_osc_config()
+
+        # OSC value to position mapping for /start command (convert string keys to int)
+        OSC_START_VALUE_MAP = {int(k): v for k, v in osc_config.get('start_value_map', {}).items()}
+
+        # OSC movement speed settings from config
+        osc_speed = osc_config.get('speed', {})
+        OSC_MOVE_SPEED = osc_speed.get('velocity', 80000)
+        OSC_MOVE_ACCEL = osc_speed.get('acceleration', OSC_MOVE_SPEED // 2)
+        OSC_MOVE_DECEL = osc_speed.get('deceleration', OSC_MOVE_SPEED // 2)
+
+        # Position tolerance and broadcast interval from config
+        OSC_POSITION_TOLERANCE = osc_config.get('position_tolerance', 0.002)
+        OSC_BROADCAST_INTERVAL = osc_config.get('broadcast_interval', 0.05)
 
         # Track active OSC movement for position broadcasting
         osc_movement_active = [False]  # Is there an active /start movement?
@@ -670,11 +691,7 @@ class MotorProcess:
 
             print(f"[OSC] Movement broadcaster started for slave {slave_idx} -> {target_pos}m (value={start_value})")
 
-            # Position tolerance for "reached" detection (2mm)
-            POSITION_TOLERANCE = 0.002
-
             last_sent_pos = None
-            broadcast_interval = 0.05  # Send position every 50ms
 
             while osc_movement_active[0] and running.value:
                 try:
@@ -687,8 +704,8 @@ class MotorProcess:
                         osc_send("/movement", slave_idx, float(current_pos))
                         last_sent_pos = current_pos
 
-                    # Check if target reached
-                    if abs(current_pos - target_pos) <= POSITION_TOLERANCE:
+                    # Check if target reached (using config tolerance)
+                    if abs(current_pos - target_pos) <= OSC_POSITION_TOLERANCE:
                         print(f"[OSC] Target reached! Position: {current_pos:.4f}m, Target: {target_pos:.4f}m")
 
                         # Send final /movement at exact target
@@ -702,7 +719,7 @@ class MotorProcess:
                         osc_movement_active[0] = False
                         break
 
-                    time.sleep(broadcast_interval)
+                    time.sleep(OSC_BROADCAST_INTERVAL)
 
                 except Exception as e:
                     print(f"[OSC] Movement broadcaster error: {e}")

@@ -1076,11 +1076,23 @@ class EtherCATController:
 
         if self.mode == self.MODE_PP:
             # PP mode - drive generates trajectory
+            # Re-apply speed settings before each move (some drives reset SDO values)
+            slave_accel = self._slave_accel.get(idx, self._accel)
+            slave_decel = self._slave_decel.get(idx, self._decel)
+            try:
+                slave = self.master.slaves[idx]
+                slave.sdo_write(0x6081, 0x00, slave_velocity.to_bytes(4, 'little', signed=False))
+                slave.sdo_write(0x607F, 0x00, slave_velocity.to_bytes(4, 'little', signed=False))
+                slave.sdo_write(0x6083, 0x00, slave_accel.to_bytes(4, 'little', signed=False))
+                slave.sdo_write(0x6084, 0x00, slave_decel.to_bytes(4, 'little', signed=False))
+            except Exception as e:
+                print(f"  [PP] Warning: Could not re-apply speed SDO: {e}")
+
             print(f"\n  [PP Mode] Slave {idx} move command:")
             print(f"        Current: {current}")
             print(f"        Target: {target}")
             print(f"        Distance: {distance}")
-            print(f"        Using SDO velocity: {slave_velocity} units/s")
+            print(f"        Velocity: {slave_velocity} units/s, Accel: {slave_accel}, Decel: {slave_decel}")
 
             with self._pdo_lock:
                 self._target_position[idx] = target

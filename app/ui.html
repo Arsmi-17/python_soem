@@ -794,18 +794,33 @@
                         </label>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                        <div>
-                            <div class="config-label">Send to IP:</div>
-                            <input type="text" id="oscSendIp" value="127.0.0.1" placeholder="127.0.0.1" style="margin: 0;">
+                    <!-- Receiver Settings -->
+                    <div style="background: var(--bg-dark); padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+                        <div class="config-label" style="color: var(--accent-blue); margin-bottom: 8px;">Receiver (Listen on):</div>
+                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+                            <div>
+                                <div class="config-label">IP:</div>
+                                <input type="text" id="oscRecvIp" value="0.0.0.0" placeholder="0.0.0.0" style="margin: 0;">
+                            </div>
+                            <div>
+                                <div class="config-label">Port:</div>
+                                <input type="number" id="oscRecvPort" value="8000" placeholder="8000" style="margin: 0;">
+                            </div>
                         </div>
-                        <div>
-                            <div class="config-label">Receive IP:</div>
-                            <input type="text" id="oscRecvIp" value="0.0.0.0" placeholder="0.0.0.0" style="margin: 0;">
-                        </div>
-                        <div>
-                            <div class="config-label">Port:</div>
-                            <input type="number" id="oscPort" value="8000" placeholder="8000" style="margin: 0;">
+                    </div>
+
+                    <!-- Sender Settings -->
+                    <div style="background: var(--bg-dark); padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+                        <div class="config-label" style="color: var(--accent-green); margin-bottom: 8px;">Sender (Send to):</div>
+                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+                            <div>
+                                <div class="config-label">IP:</div>
+                                <input type="text" id="oscSendIp" value="127.0.0.1" placeholder="127.0.0.1" style="margin: 0;">
+                            </div>
+                            <div>
+                                <div class="config-label">Port:</div>
+                                <input type="number" id="oscSendPort" value="9000" placeholder="9000" style="margin: 0;">
+                            </div>
                         </div>
                     </div>
 
@@ -2226,16 +2241,23 @@
         // OSC Connect
         function oscConnect() {
             const sendIp = document.getElementById('oscSendIp').value || '127.0.0.1';
+            const sendPort = parseInt(document.getElementById('oscSendPort').value) || 9000;
             const recvIp = document.getElementById('oscRecvIp').value || '0.0.0.0';
-            const port = parseInt(document.getElementById('oscPort').value) || 8000;
+            const recvPort = parseInt(document.getElementById('oscRecvPort').value) || 8000;
             const modeRadio = document.querySelector('input[name="oscMode"]:checked');
             const mode = modeRadio ? parseInt(modeRadio.value) : 3;  // 1=recv, 2=send, 3=both
             const modeNames = {1: 'Receive', 2: 'Send', 3: 'Both'};
-            sendCmd('osc_connect', { send_ip: sendIp, recv_ip: recvIp, port: port, mode: mode });
-            log(`Starting OSC (${modeNames[mode]}): Send=${sendIp}, Recv=${recvIp}, Port=${port}...`, 'com');
+            sendCmd('osc_connect', {
+                send_ip: sendIp,
+                send_port: sendPort,
+                recv_ip: recvIp,
+                recv_port: recvPort,
+                mode: mode
+            });
+            log(`Starting OSC (${modeNames[mode]}): Recv ${recvIp}:${recvPort}, Send ${sendIp}:${sendPort}`, 'com');
 
             // Store for display
-            window.oscConfig = { sendIp, recvIp, port, mode };
+            window.oscConfig = { sendIp, sendPort, recvIp, recvPort, mode };
         }
 
         // OSC Disconnect
@@ -2265,20 +2287,23 @@
                 if (connectBtn) connectBtn.disabled = true;
                 if (disconnectBtn) disconnectBtn.disabled = false;
 
-                // Show connection info
-                if (connInfo) {
+                // Show connection info from stored config
+                if (connInfo && window.oscConfig) {
                     connInfo.style.display = 'block';
                     // Receive info (mode 1 or 3)
                     if (oscMode === 1 || oscMode === 3) {
-                        recvInfo.innerHTML = `<strong>Receiving on:</strong> ${oscIp || '0.0.0.0'}:${oscPort || 8000}`;
+                        const recvIp = window.oscConfig.recvIp || '0.0.0.0';
+                        const recvPort = window.oscConfig.recvPort || 8000;
+                        recvInfo.innerHTML = `<strong>Listening:</strong> ${recvIp}:${recvPort}`;
                         recvInfo.style.display = 'block';
                     } else {
                         recvInfo.style.display = 'none';
                     }
                     // Send info (mode 2 or 3)
                     if (oscMode === 2 || oscMode === 3) {
-                        const sendIp = window.oscConfig?.sendIp || '127.0.0.1';
-                        sendInfo.innerHTML = `<strong>Sending to:</strong> ${sendIp}:${oscPort || 8000}`;
+                        const sendIp = window.oscConfig.sendIp || '127.0.0.1';
+                        const sendPort = window.oscConfig.sendPort || 9000;
+                        sendInfo.innerHTML = `<strong>Sending to:</strong> ${sendIp}:${sendPort}`;
                         sendInfo.style.display = 'block';
                     } else {
                         sendInfo.style.display = 'none';
