@@ -391,20 +391,103 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        .header-wrapper {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-left {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .ui-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.8rem;
+        }
+
+        .ui-toggle label {
+            color: var(--text-secondary);
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-ui);
+            transition: 0.3s;
+            border-radius: 26px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--text-secondary);
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: var(--accent-blue);
+            border-color: var(--accent-blue);
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+            background-color: white;
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>⚡ EtherCAT Motor Control System</h1>
-        <div class="status">
-            <span>
-                <span class="status-dot disconnected" id="statusDot"></span>
-                <span id="statusText">Disconnected</span>
-            </span>
-            <span class="ws-indicator">
-                <span class="status-dot disconnected" id="wsDot"></span>
-                WebSocket
-            </span>
+        <div class="header-wrapper">
+            <div class="header-left">
+                <h1>EtherCAT Motor Control System</h1>
+                <div class="status">
+                    <span>
+                        <span class="status-dot disconnected" id="statusDot"></span>
+                        <span id="statusText">Disconnected</span>
+                    </span>
+                    <span class="ws-indicator">
+                        <span class="status-dot disconnected" id="wsDot"></span>
+                        WebSocket
+                    </span>
+                </div>
+            </div>
+            <div class="ui-toggle">
+                <label>Classic UI</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="uiToggle" onchange="toggleUI()">
+                    <span class="toggle-slider"></span>
+                </label>
+                <label>New UI</label>
+            </div>
         </div>
     </div>
 
@@ -819,6 +902,15 @@
         let ws = null;
         let reconnectTimer = null;
         let isTerminating = false;  // Flag to prevent reconnection after terminate
+
+        // Toggle UI version
+        function toggleUI() {
+            const isNewUI = document.getElementById('uiToggle').checked;
+            if (isNewUI) {
+                // Redirect to new UI
+                window.location.href = 'newui.html';
+            }
+        }
 
         // Connect WebSocket
         function connectWS() {

@@ -467,6 +467,26 @@ async def serve_ui():
         return HTMLResponse(content="<h1>UI file not found</h1>", status_code=404)
 
 
+@app.get("/newui.html")
+async def serve_new_ui():
+    """Serve new UI page"""
+    ui_path = os.path.join(os.path.dirname(__file__), 'newui.html')
+    if os.path.exists(ui_path):
+        return FileResponse(ui_path)
+    else:
+        return HTMLResponse(content="<h1>New UI file not found</h1>", status_code=404)
+
+
+@app.get("/ui.html")
+async def serve_classic_ui():
+    """Serve classic UI page"""
+    ui_path = os.path.join(os.path.dirname(__file__), 'ui.html')
+    if os.path.exists(ui_path):
+        return FileResponse(ui_path)
+    else:
+        return HTMLResponse(content="<h1>UI file not found</h1>", status_code=404)
+
+
 # ============================================================
 # Main
 # ============================================================

@@ -1,0 +1,59 @@
+{
+    "speed": {
+        "movement_speed": {
+            "velocity": 250000,
+            "acceleration": 125000,
+            "deceleration": 125000,
+            "csp_max_step": 100
+        }
+    },
+    "slaves": {
+        "count": 1,
+        "names": ["Movement 1"],
+        "movement_slaves": [0]
+    },
+    "positions": {
+        "home_pos_M": [0],
+        "pos_1": [-1],
+        "pos_2": [-0.5]
+    },
+    "template": {
+        "name": "Movement + Rotation Sequence",
+        "description": "Combined movement and rotation operations",
+        "loop": false,
+        "loop_count": 1,
+        "operation_mode": "both",
+        "steps": [
+            {
+                "name": "Home All",
+                "type": "home",
+                "position": "home_pos_M",
+                "delay": 3
+            },
+            {
+                "name": "Move to Position 1",
+                "type": "movement",
+                "position": "pos_1",
+                "delay": 7
+            },
+            {
+                "name": "Home All",
+                "type": "home",
+                "position": "home_pos_M",
+                "delay": 7
+            },
+            {
+                "name": "Move to Position 1",
+                "type": "movement",
+                "position": "pos_2",
+                "delay": 7
+            },
+            {
+                "name": "Home All",
+                "type": "home",
+                "position": "home_pos_M",
+                "delay": 3
+            }
+        ]
+    }
+}

@@ -637,15 +637,93 @@ class MotorProcess:
                 print(f"[OSC] Parse error: {e}")
                 return None, None
 
+        # OSC value to position mapping for /start command
+        OSC_START_VALUE_MAP = {
+            0: 0,
+            1: 0.1,
+            2: 0.5,
+            3: 1.0,
+            4: 1.5,
+            5: 2.0
+        }
+
+        # OSC movement speed settings
+        OSC_MOVE_SPEED = 80000  # velocity
+        OSC_MOVE_ACCEL = OSC_MOVE_SPEED // 2  # acceleration (speed / 2)
+        OSC_MOVE_DECEL = OSC_MOVE_SPEED // 2  # deceleration (speed / 2)
+
+        # Track active OSC movement for position broadcasting
+        osc_movement_active = [False]  # Is there an active /start movement?
+        osc_movement_slave = [0]  # Which slave is moving
+        osc_movement_target = [0.0]  # Target position
+        osc_movement_value = [0]  # Original /start value (for /reached message)
+        osc_movement_thread = [None]  # Thread for position broadcasting
+
+        def osc_movement_broadcaster(controller):
+            """
+            Thread function that broadcasts /movement messages while slave is moving.
+            When target is reached, sends /reached message.
+            """
+            slave_idx = osc_movement_slave[0]
+            target_pos = osc_movement_target[0]
+            start_value = osc_movement_value[0]
+
+            print(f"[OSC] Movement broadcaster started for slave {slave_idx} -> {target_pos}m (value={start_value})")
+
+            # Position tolerance for "reached" detection (2mm)
+            POSITION_TOLERANCE = 0.002
+
+            last_sent_pos = None
+            broadcast_interval = 0.05  # Send position every 50ms
+
+            while osc_movement_active[0] and running.value:
+                try:
+                    # Get current position
+                    current_pos = controller.read_position_meters(slave_idx)
+
+                    # Send /movement message (slave_id, current_position)
+                    # Only send if position changed significantly (0.1mm threshold)
+                    if last_sent_pos is None or abs(current_pos - last_sent_pos) > 0.0001:
+                        osc_send("/movement", slave_idx, float(current_pos))
+                        last_sent_pos = current_pos
+
+                    # Check if target reached
+                    if abs(current_pos - target_pos) <= POSITION_TOLERANCE:
+                        print(f"[OSC] Target reached! Position: {current_pos:.4f}m, Target: {target_pos:.4f}m")
+
+                        # Send final /movement at exact target
+                        osc_send("/movement", slave_idx, float(target_pos))
+
+                        # Send /reached message with original value
+                        osc_send("/reached", start_value)
+                        add_osc_log('send', f"/reached {start_value}")
+                        print(f"[OSC] Sent /reached {start_value}")
+
+                        osc_movement_active[0] = False
+                        break
+
+                    time.sleep(broadcast_interval)
+
+                except Exception as e:
+                    print(f"[OSC] Movement broadcaster error: {e}")
+                    break
+
+            print(f"[OSC] Movement broadcaster stopped")
+
         def osc_receiver(ip, port, shutdown_flag, controller):
             """
             Listen for incoming OSC messages.
             Supported commands:
-            - /slave_move/<slave_id> <position_float>  - Move slave to position
+            - /start [value]                           - Move slave0 to mapped position (1->0.1, 2->0.5, 3->1.0, 4->1.5, 5->2.0)
+            - /move [slave] [position]                 - Move slave to position in meters
+            - /slave_move/<slave_id> <position_float>  - Move slave to position (legacy format)
+            - /home                                    - Move all slaves to home (0m)
             - /template_run                            - Run current template
             - /template_stop                           - Stop template
+            - /stop                                    - Emergency stop
             - /enable                                  - Enable all drives
             - /disable                                 - Disable all drives
+            - /reset                                   - Reset faults
             """
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -659,6 +737,7 @@ class MotorProcess:
                 return
 
             print(f"[OSC] Receiver started on {ip}:{port}")
+            print(f"[OSC] Value mapping for /start: {OSC_START_VALUE_MAP}")
 
             while not shutdown_flag[0] and running.value:
                 try:
@@ -670,11 +749,96 @@ class MotorProcess:
 
                     # Log received message
                     args_str = ' '.join(str(a) for a in args) if args else ''
-                    add_osc_log('recv', f"{address} {args_str}".strip())
+                    add_osc_log('recv', f"{address} [{args_str}]".strip())
                     print(f"[OSC] Received: {address} {args}")
 
-                    # Handle different OSC commands
-                    if address.startswith('/slave_move/'):
+                    # =========================================================
+                    # /start [value] - Move slave0 to mapped position
+                    # =========================================================
+                    if address == '/start':
+                        if args and len(args) > 0:
+                            value = int(args[0])
+                            target_position = OSC_START_VALUE_MAP.get(value)
+
+                            if target_position is not None:
+                                print(f"[OSC] /start [{value}] -> Moving slave0 to {target_position}m")
+                                print(f"[OSC] Speed: vel={OSC_MOVE_SPEED}, accel={OSC_MOVE_ACCEL}, decel={OSC_MOVE_DECEL}")
+                                add_osc_log('info', f"/start [{value}] -> slave0 to {target_position}m")
+
+                                if controller.slaves_count > 0:
+                                    if controller.is_enabled(0):
+                                        # Stop any existing movement broadcaster
+                                        osc_movement_active[0] = False
+                                        if osc_movement_thread[0] and osc_movement_thread[0].is_alive():
+                                            osc_movement_thread[0].join(timeout=0.5)
+
+                                        # Apply speed settings (vel, accel=vel/2, decel=vel/2)
+                                        controller.configure_speed(0, OSC_MOVE_SPEED, OSC_MOVE_ACCEL, OSC_MOVE_DECEL)
+
+                                        # Set movement tracking variables
+                                        osc_movement_slave[0] = 0
+                                        osc_movement_target[0] = target_position
+                                        osc_movement_value[0] = value
+                                        osc_movement_active[0] = True
+
+                                        # Start movement
+                                        controller.move_to_meters(0, target_position)
+
+                                        # Start position broadcaster thread
+                                        osc_movement_thread[0] = threading.Thread(
+                                            target=osc_movement_broadcaster,
+                                            args=(controller,),
+                                            daemon=True
+                                        )
+                                        osc_movement_thread[0].start()
+                                    else:
+                                        print(f"[OSC] Slave 0 not enabled")
+                                        add_osc_log('warn', "Slave 0 not enabled")
+                                else:
+                                    print(f"[OSC] No slaves available")
+                                    add_osc_log('warn', "No slaves available")
+                            else:
+                                print(f"[OSC] /start unknown value: {value}. Valid: {list(OSC_START_VALUE_MAP.keys())}")
+                                add_osc_log('warn', f"Unknown value: {value}")
+                        else:
+                            print(f"[OSC] /start requires a value argument")
+                            add_osc_log('warn', "/start requires a value")
+
+                    # =========================================================
+                    # /move [slave] [position] - Move slave to position
+                    # =========================================================
+                    elif address == '/move':
+                        if len(args) >= 2:
+                            slave_idx = int(args[0])
+                            position = float(args[1])
+
+                            print(f"[OSC] /move slave{slave_idx} to {position}m")
+                            add_osc_log('info', f"/move slave{slave_idx} to {position}m")
+
+                            if slave_idx >= 0 and slave_idx < controller.slaves_count:
+                                if controller.is_enabled(slave_idx):
+                                    controller.move_to_meters(slave_idx, position)
+                                else:
+                                    print(f"[OSC] Slave {slave_idx} not enabled")
+                            else:
+                                print(f"[OSC] Invalid slave index: {slave_idx}")
+                        else:
+                            print(f"[OSC] /move requires 2 arguments: slave, position")
+
+                    # =========================================================
+                    # /home - Move all slaves to home (0m)
+                    # =========================================================
+                    elif address == '/home':
+                        print("[OSC] /home -> Moving all to home (0m)")
+                        add_osc_log('info', "/home -> All slaves to 0m")
+                        for i in range(controller.slaves_count):
+                            if controller.is_enabled(i):
+                                controller.move_to_meters(i, 0.0)
+
+                    # =========================================================
+                    # /slave_move/<slave_id> [position] - Legacy format
+                    # =========================================================
+                    elif address.startswith('/slave_move/'):
                         # Format: /slave_move/<slave_id> with float arg for position
                         parts = address.split('/')
                         if len(parts) >= 3:
@@ -704,7 +868,7 @@ class MotorProcess:
                         print("[OSC] Triggering template run")
                         cmd_queue.put({'cmd': MotorProcess.CMD_TEMPLATE})
 
-                    elif address == '/template_stop':
+                    elif address == '/template_stop' or address == '/stop':
                         print("[OSC] Triggering stop")
                         shared_stop.value = 1
 
@@ -729,18 +893,18 @@ class MotorProcess:
             sock.close()
             print("[OSC] Receiver stopped")
 
-        def start_osc(mode, send_ip, recv_ip, port):
-            """Start OSC sender and/or receiver based on mode"""
+        def start_osc(mode, send_ip, send_port, recv_ip, recv_port):
+            """Start OSC sender and/or receiver based on mode with separate ports"""
             nonlocal osc_send_socket, osc_target_ip, osc_target_port, osc_recv_thread, osc_recv_shutdown
 
             # Stop existing OSC if any
             stop_osc()
 
             osc_target_ip[0] = send_ip
-            osc_target_port[0] = port
+            osc_target_port[0] = send_port
             shared_osc_mode.value = mode
             shared_osc_ip.value = recv_ip.encode('utf-8')[:63]
-            shared_osc_port.value = port
+            shared_osc_port.value = recv_port
 
             # Start sender (direct UDP to target IP, not broadcast)
             if mode in [OSC_MODE_SEND, OSC_MODE_BOTH]:
@@ -749,7 +913,7 @@ class MotorProcess:
                     # Only enable broadcast if sending to broadcast address
                     if send_ip in ['255.255.255.255', '<broadcast>']:
                         osc_send_socket[0].setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                    print(f"[OSC] Sender started (sending to {send_ip}:{port})")
+                    print(f"[OSC] Sender started (sending to {send_ip}:{send_port})")
                 except Exception as e:
                     print(f"[OSC] Failed to create send socket: {e}")
                     osc_send_socket[0] = None
@@ -759,14 +923,14 @@ class MotorProcess:
                 osc_recv_shutdown[0] = False
                 osc_recv_thread[0] = threading.Thread(
                     target=osc_receiver,
-                    args=(recv_ip, port, osc_recv_shutdown, ec),
+                    args=(recv_ip, recv_port, osc_recv_shutdown, ec),
                     daemon=True
                 )
                 osc_recv_thread[0].start()
 
             shared_osc_connected.value = 1
             mode_str = {OSC_MODE_RECEIVE: 'Receive', OSC_MODE_SEND: 'Send', OSC_MODE_BOTH: 'Both'}[mode]
-            send_response(True, f"OSC started ({mode_str}) - Send: {send_ip}:{port}, Recv: {recv_ip}:{port}")
+            send_response(True, f"OSC started ({mode_str}) - Send: {send_ip}:{send_port}, Recv: {recv_ip}:{recv_port}")
 
         def stop_osc():
             """Stop OSC sender and receiver"""
@@ -1419,25 +1583,29 @@ class MotorProcess:
                             send_response(True, "UDP was not connected")
 
                     elif cmd == MotorProcess.CMD_OSC_CONNECT:
-                        # Start OSC sender/receiver
+                        # Start OSC sender/receiver with separate ports
                         if data:
                             osc_send_ip = data.get('send_ip', '127.0.0.1')
+                            osc_send_port = data.get('send_port', 9000)
                             osc_recv_ip = data.get('recv_ip', '0.0.0.0')
-                            osc_port = data.get('port', 8000)
+                            osc_recv_port = data.get('recv_port', data.get('port', 8000))
                             osc_mode = data.get('mode', OSC_MODE_BOTH)  # 1=recv, 2=send, 3=both
                         else:
                             osc_send_ip = '127.0.0.1'
+                            osc_send_port = 9000
                             osc_recv_ip = '0.0.0.0'
-                            osc_port = 8000
+                            osc_recv_port = 8000
                             osc_mode = OSC_MODE_BOTH
 
-                        if isinstance(osc_port, str):
-                            osc_port = int(osc_port)
+                        if isinstance(osc_send_port, str):
+                            osc_send_port = int(osc_send_port)
+                        if isinstance(osc_recv_port, str):
+                            osc_recv_port = int(osc_recv_port)
                         if isinstance(osc_mode, str):
                             osc_mode = int(osc_mode)
 
-                        print(f"\n[OSC] Starting OSC (mode={osc_mode}, send={osc_send_ip}, recv={osc_recv_ip}, port={osc_port})")
-                        start_osc(osc_mode, osc_send_ip, osc_recv_ip, osc_port)
+                        print(f"\n[OSC] Starting OSC (mode={osc_mode}, send={osc_send_ip}:{osc_send_port}, recv={osc_recv_ip}:{osc_recv_port})")
+                        start_osc(osc_mode, osc_send_ip, osc_send_port, osc_recv_ip, osc_recv_port)
 
                     elif cmd == MotorProcess.CMD_OSC_DISCONNECT:
                         # Stop OSC

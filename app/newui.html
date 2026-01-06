@@ -1,0 +1,2056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EtherCAT Motor Control - New UI</title>
+    <style>
+        :root {
+            --bg-dark: #0d1117;
+            --bg-panel: #161b22;
+            --bg-card: #21262d;
+            --border-ui: #30363d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --text-gold: #d29922;
+            --accent-purple: #a371f7;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px 20px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-ui);
+            border-radius: 8px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .header h1 {
+            color: var(--accent-blue);
+            font-size: 1.3rem;
+        }
+
+        .header .status {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 0.85rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+
+        .status-dot.disconnected { background: var(--accent-red); }
+        .status-dot.connected { background: var(--text-gold); }
+        .status-dot.enabled { background: var(--accent-green); }
+        .status-dot.moving { background: var(--accent-blue); animation: pulse 0.5s infinite; }
+        .status-dot.fault { background: var(--accent-red); animation: pulse-fast 0.3s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        @keyframes pulse-fast {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        .ui-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+        }
+
+        .ui-toggle label {
+            color: var(--text-secondary);
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-ui);
+            transition: 0.3s;
+            border-radius: 26px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--text-secondary);
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: var(--accent-blue);
+            border-color: var(--accent-blue);
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+            background-color: white;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .section {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-ui);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .section-title {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-blue);
+            border-bottom: 1px solid var(--border-ui);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .status-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .error-box {
+            background: rgba(248, 81, 73, 0.1);
+            border-left: 4px solid var(--accent-red);
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .error-box h3 {
+            color: var(--accent-red);
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+
+        .error-box ul, .instruction-box ul {
+            list-style: none;
+            font-size: 0.85rem;
+        }
+
+        .error-box li, .instruction-box li {
+            padding: 5px 0;
+            color: var(--text-primary);
+        }
+
+        .error-box li:before {
+            content: "• ";
+            color: var(--accent-red);
+            font-weight: bold;
+        }
+
+        .instruction-box {
+            background: rgba(63, 185, 80, 0.1);
+            border-left: 4px solid var(--accent-green);
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .instruction-box h3 {
+            color: var(--accent-green);
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+        }
+
+        .instruction-box li:before {
+            content: "• ";
+            color: var(--accent-green);
+            font-weight: bold;
+        }
+
+        .mode-info {
+            background: var(--bg-card);
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .mode-info strong {
+            color: var(--accent-blue);
+        }
+
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn:hover:not(:disabled) {
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-reset { background: var(--text-gold); color: #000; }
+        .btn-enable { background: var(--accent-green); color: #fff; }
+        .btn-disable { background: var(--text-secondary); color: #fff; }
+        .btn-clear-error { background: var(--accent-red); color: #fff; }
+        .btn-emergency { background: #c0392b; color: #fff; }
+        .btn-primary { background: var(--accent-blue); color: #fff; }
+        .btn-outline { background: transparent; border: 1px solid var(--border-ui); color: var(--text-primary); }
+        .btn-home { background: var(--accent-purple); color: #fff; }
+        .btn-gold { background: var(--text-gold); color: #000; }
+        .terminate-btn { background: #8B0000; color: white; }
+
+        .control-block {
+            background: var(--bg-card);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .control-block h4 {
+            color: var(--accent-blue);
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .control-block.error-block {
+            border: 1px solid var(--accent-red);
+        }
+
+        .control-block.error-block h4 {
+            color: var(--accent-red);
+        }
+
+        select, input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-ui);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .position-btns {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin: 10px 0;
+        }
+
+        .position-btns button {
+            padding: 10px;
+            font-size: 0.8rem;
+        }
+
+        .current-mode {
+            background: rgba(63, 185, 80, 0.15);
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            color: var(--accent-green);
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border-ui);
+            font-size: 0.85rem;
+        }
+
+        .status-label { color: var(--text-secondary); }
+        .status-value { font-weight: 600; }
+        .status-connected { color: var(--accent-green); }
+
+        .indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+
+        .indicator-ok { background: var(--accent-green); box-shadow: 0 0 8px rgba(63, 185, 80, 0.6); }
+        .indicator-error { background: var(--accent-red); box-shadow: 0 0 8px rgba(248, 81, 73, 0.6); }
+        .indicator-disabled { background: var(--text-secondary); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            margin-top: 15px;
+        }
+
+        th {
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            padding: 10px 8px;
+            text-align: left;
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+        }
+
+        td {
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--border-ui);
+            font-family: monospace;
+        }
+
+        .hidden { display: none; }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .homing-block {
+            background: rgba(88, 166, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 1px solid var(--accent-blue);
+        }
+
+        .homing-block h4 {
+            color: var(--accent-blue);
+            margin-bottom: 12px;
+            font-size: 0.85rem;
+        }
+
+        /* Speed Block Styles */
+        .speed-block {
+            background: var(--bg-card);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 1px solid var(--border-ui);
+        }
+
+        .speed-block h4 {
+            margin-bottom: 12px;
+            font-size: 0.85rem;
+        }
+
+        .speed-block.pp h4 { color: var(--accent-green); }
+        .speed-block.csp h4 { color: var(--accent-blue); }
+        .speed-block.pv h4 { color: var(--text-gold); }
+
+        .speed-info {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin: 8px 0;
+        }
+
+        .config-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 3px;
+        }
+
+        /* Velocity Controls */
+        .velocity-btns {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .velocity-btns button {
+            padding: 15px 10px;
+            font-size: 0.9rem;
+        }
+
+        /* UDP/OSC Section */
+        .receiver-block {
+            background: var(--bg-card);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .receiver-block h4 {
+            color: var(--accent-purple);
+            margin-bottom: 12px;
+            font-size: 0.85rem;
+        }
+
+        .receiver-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            font-size: 0.85rem;
+        }
+
+        @media (max-width: 1200px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Template Section Styles */
+        .template-block {
+            background: var(--bg-card);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 1px solid var(--text-gold);
+        }
+
+        .template-block h4 {
+            color: var(--text-gold);
+            margin-bottom: 12px;
+            font-size: 0.85rem;
+        }
+
+        /* OSC Section */
+        .osc-block {
+            background: var(--bg-card);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 1px solid var(--text-gold);
+        }
+
+        .osc-block h4 {
+            color: var(--text-gold);
+            margin-bottom: 12px;
+            font-size: 0.85rem;
+        }
+
+        /* Log Window */
+        #log-window {
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.75rem;
+            background: var(--bg-card);
+            border-radius: 6px;
+            padding: 10px;
+            margin-top: 15px;
+        }
+
+        .log-entry {
+            padding: 3px 0;
+            border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+        }
+
+        .log-ts { color: var(--text-secondary); margin-right: 8px; }
+        .log-sys { color: var(--accent-green); }
+        .log-com { color: var(--accent-blue); }
+        .log-wrn { color: var(--text-gold); }
+        .log-err { color: var(--accent-red); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <h1>EtherCAT Motor Control</h1>
+            <div class="status">
+                <span>
+                    <span class="status-dot disconnected" id="statusDot"></span>
+                    <span id="statusText">Disconnected</span>
+                </span>
+                <span>
+                    <span class="status-dot disconnected" id="wsDot"></span>
+                    WebSocket
+                </span>
+            </div>
+        </div>
+        <div class="ui-toggle">
+            <label>Classic UI</label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="uiToggle" checked onchange="toggleUI()">
+                <span class="toggle-slider"></span>
+            </label>
+            <label>New UI</label>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Instructions Section -->
+        <div class="section">
+            <h2 class="section-title">Instructions</h2>
+
+            <div id="step1" class="error-box">
+                <h3>Step 1: System Fault Detected</h3>
+                <ul>
+                    <li>Click <strong>Reset</strong> (in Real-time Status) to recover</li>
+                    <li>If error remains, use <strong>Clear Error</strong> for specific slave</li>
+                    <li>Once all slaves are Operational, Step 2 appears</li>
+                </ul>
+            </div>
+
+            <div id="step2" class="instruction-box hidden">
+                <h3>Step 2: Device Startup</h3>
+                <ul>
+                    <li>Select desired <strong>Operation Mode</strong></li>
+                    <li>Click <strong>Enable</strong> in Real-time Status section</li>
+                    <li>After enabling, Step 3 with controls will appear</li>
+                </ul>
+            </div>
+
+            <div id="step3" class="instruction-box hidden">
+                <h3 id="step3Title">Step 3: Mode Active</h3>
+                <ul id="step3List"></ul>
+            </div>
+
+            <div class="mode-info">
+                <strong>Mode Information:</strong><br><br>
+                <strong>CSP</strong> - Cyclic Sync Position: Real-time interactive positioning<br>
+                <strong>PP</strong> - Profile Position: Precise target positioning & templates<br>
+                <strong>PV</strong> - Profile Velocity: Continuous speed control
+            </div>
+        </div>
+
+        <!-- Operation Section -->
+        <div class="section">
+            <h2 class="section-title">Operation</h2>
+
+            <div id="errorControls">
+                <div class="control-block error-block">
+                    <h4>Clear Error</h4>
+                    <select id="clearErrorSlaveSelect" onchange="updateButtonStates()">
+                        <option value="">-- Select Slave --</option>
+                    </select>
+                    <button class="btn btn-clear-error" onclick="clearError()" style="width: 100%;" id="clearErrorBtn" disabled>Clear Error</button>
+                </div>
+            </div>
+
+            <div id="startupControls" class="hidden">
+                <div class="control-block">
+                    <h4>Operation Mode</h4>
+                    <div class="current-mode" id="currentModeDisplay">Selected Mode: CSP (Cyclic Sync Position)</div>
+                    <select id="modeSelector" onchange="changeMode()">
+                        <option value="8" selected>CSP - Cyclic Sync Position</option>
+                        <option value="1">PP - Profile Position</option>
+                        <option value="3">PV - Profile Velocity</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="modeActions" class="hidden">
+                <!-- CSP Actions -->
+                <div id="cspActions" class="hidden">
+                    <div class="control-block" id="cspMovementBlock">
+                        <h4>Custom Movement</h4>
+                        <select id="slaveSelect" onchange="updateButtonStates()">
+                            <option value="">-- Select Slave --</option>
+                        </select>
+                        <div class="position-btns" id="cspQuickBtns">
+                            <button class="btn btn-outline" onclick="moveTo(-1.0)" disabled>-1.0m</button>
+                            <button class="btn btn-outline" onclick="moveTo(-0.5)" disabled>-0.5m</button>
+                            <button class="btn btn-outline" onclick="moveTo(0.5)" disabled>+0.5m</button>
+                            <button class="btn btn-outline" onclick="moveTo(1.0)" disabled>+1.0m</button>
+                            <button class="btn btn-home" onclick="moveTo(0)" style="grid-column: span 2;" disabled>HOME (0m)</button>
+                            <button class="btn btn-outline" onclick="moveTo(-0.25)" disabled>-0.25m</button>
+                            <button class="btn btn-outline" onclick="moveTo(0.25)" disabled>+0.25m</button>
+                        </div>
+                        <input type="number" id="targetPosition" placeholder="Custom position (meters)" step="0.01">
+                        <button class="btn btn-primary" onclick="executeMove()" style="width: 100%; margin-bottom: 8px;" id="executeMoveBtn" disabled>Execute Move</button>
+                        <button class="btn btn-home" onclick="moveAllToHome()" style="width: 100%; margin-bottom: 8px;" id="allToHomeBtn" disabled>Move All to Home</button>
+                        <button class="btn btn-emergency" onclick="emergencyStop()" style="width: 100%;" id="emergencyStopBtn">EMERGENCY STOP</button>
+                    </div>
+
+                    <!-- CSP Speed Block -->
+                    <div class="speed-block csp" id="speedCSP">
+                        <h4>CSP Speed Settings</h4>
+                        <div class="config-label">Max Step (units/ms):</div>
+                        <input type="number" id="cspMaxStep" value="800" oninput="updateCSPEffective()">
+                        <div class="speed-info">Effective Velocity: <span id="cspEffectiveVel">800000</span> units/s</div>
+                        <button class="btn btn-primary" onclick="applyCSPSpeed()" style="width: 100%;">Apply CSP Speed</button>
+                    </div>
+
+                    <!-- UDP Receiver -->
+                    <div class="receiver-block" id="udpSection">
+                        <h4>UDP Receiver</h4>
+                        <div class="receiver-status">
+                            <span class="status-dot disconnected" id="udpStatusDot"></span>
+                            <span id="udpStatusText">Disconnected</span>
+                        </div>
+                        <div class="grid-2">
+                            <div>
+                                <div class="config-label">IP Address:</div>
+                                <input type="text" id="udpIp" value="0.0.0.0" style="margin: 0;">
+                            </div>
+                            <div>
+                                <div class="config-label">Port:</div>
+                                <input type="number" id="udpPort" value="9000" style="margin: 0;">
+                            </div>
+                        </div>
+                        <div class="grid-2" style="margin-top: 10px;">
+                            <button class="btn btn-enable" onclick="udpConnect()" id="udpConnectBtn">Connect</button>
+                            <button class="btn btn-disable" onclick="udpDisconnect()" id="udpDisconnectBtn" disabled>Disconnect</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PP Actions -->
+                <div id="ppActions" class="hidden">
+                    <div class="control-block" id="ppMovementBlock">
+                        <h4>Custom Movement</h4>
+                        <select id="slaveSelectPP" onchange="updateButtonStates()">
+                            <option value="">-- Select Slave --</option>
+                        </select>
+                        <div class="position-btns" id="ppQuickBtns">
+                            <button class="btn btn-outline" onclick="moveToPP(-1.0)" disabled>-1.0m</button>
+                            <button class="btn btn-outline" onclick="moveToPP(-0.5)" disabled>-0.5m</button>
+                            <button class="btn btn-outline" onclick="moveToPP(0.5)" disabled>+0.5m</button>
+                            <button class="btn btn-outline" onclick="moveToPP(1.0)" disabled>+1.0m</button>
+                            <button class="btn btn-home" onclick="moveToPP(0)" style="grid-column: span 2;" disabled>HOME (0m)</button>
+                            <button class="btn btn-outline" onclick="moveToPP(-0.25)" disabled>-0.25m</button>
+                            <button class="btn btn-outline" onclick="moveToPP(0.25)" disabled>+0.25m</button>
+                        </div>
+                        <input type="number" id="targetPositionPP" placeholder="Custom position (meters)" step="0.01">
+                        <button class="btn btn-primary" onclick="executeMovePP()" style="width: 100%; margin-bottom: 8px;" id="executeMovePPBtn" disabled>Execute Move</button>
+                        <button class="btn btn-home" onclick="moveAllToHome()" style="width: 100%; margin-bottom: 8px;" id="allToHomePPBtn" disabled>Move All to Home</button>
+                        <button class="btn btn-emergency" onclick="emergencyStop()" style="width: 100%;">EMERGENCY STOP</button>
+                    </div>
+
+                    <!-- PP Speed Block -->
+                    <div class="speed-block pp" id="speedPP">
+                        <h4>PP Speed Settings</h4>
+                        <div class="config-label">Speed (x1000 units/s):</div>
+                        <input type="number" id="ppSpeed" value="80" oninput="updatePPEffective()">
+                        <div class="speed-info">
+                            Velocity: <span id="ppEffectiveVel">80000</span> units/s |
+                            Accel/Decel: <span id="ppEffectiveAccel">40000</span> units/s²
+                        </div>
+                        <button class="btn btn-enable" onclick="applyPPSpeed()" style="width: 100%;">Apply PP Speed</button>
+                    </div>
+
+                    <!-- Template Control -->
+                    <div class="template-block" id="templateSection">
+                        <h4>Template Execution</h4>
+
+                        <!-- Config file dropdown -->
+                        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                            <select id="configFileName" style="flex: 1; margin: 0;">
+                                <option value="">-- Select Config --</option>
+                            </select>
+                            <button class="btn btn-outline" onclick="refreshConfigList()" style="width: auto; padding: 10px 12px;" title="Refresh list">↻</button>
+                            <button class="btn btn-primary" onclick="loadConfigFile()" style="width: auto; padding: 10px 15px;">Load</button>
+                        </div>
+
+                        <!-- Steps per Meter Config -->
+                        <div style="background: var(--bg-dark); padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end;">
+                                <div>
+                                    <div class="config-label">Actual Steps/m:</div>
+                                    <input type="number" id="actualStepsInput" value="792914" style="margin: 0; padding: 8px;">
+                                </div>
+                                <div>
+                                    <div class="config-label">Raw Steps/m:</div>
+                                    <input type="number" id="rawStepsInput" value="202985985" style="margin: 0; padding: 8px;">
+                                </div>
+                                <button class="btn btn-primary" onclick="applyStepsConfig()" style="height: 36px; padding: 8px 12px;">Apply</button>
+                            </div>
+                        </div>
+
+                        <!-- Config Info -->
+                        <div id="configInfo" style="background: var(--bg-dark); padding: 10px; border-radius: 6px; margin-bottom: 10px; display: none;">
+                            <div style="font-weight: bold; margin-bottom: 8px; color: var(--text-primary); font-size: 0.85rem;">Config Info</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.8rem;">
+                                <div>
+                                    <div class="config-label">Operation Mode:</div>
+                                    <div id="cfgOpMode" style="color: var(--text-gold);">--</div>
+                                </div>
+                                <div>
+                                    <div class="config-label">Slave Count:</div>
+                                    <div id="cfgSlaveCount">--</div>
+                                </div>
+                                <div>
+                                    <div class="config-label">Movement Slaves:</div>
+                                    <div id="cfgMovementSlaves" style="color: var(--accent-green);">--</div>
+                                </div>
+                                <div>
+                                    <div class="config-label">Movement Speed:</div>
+                                    <div id="cfgMovementSpeed">--</div>
+                                </div>
+                                <div>
+                                    <div class="config-label">Rotation Slaves:</div>
+                                    <div id="cfgRotationSlaves" style="color: var(--accent-blue);">--</div>
+                                </div>
+                                <div>
+                                    <div class="config-label">Rotation Speed:</div>
+                                    <div id="cfgRotationSpeed">--</div>
+                                </div>
+                                <div style="grid-column: span 2;">
+                                    <div class="config-label">Movement Mode:</div>
+                                    <div id="cfgMovementMode" style="color: var(--accent-green);">--</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Template Steps Table -->
+                        <div style="background: var(--bg-dark); padding: 10px; border-radius: 6px; margin-bottom: 10px; overflow-x: auto; max-height: 200px; overflow-y: auto;">
+                            <div id="templateName" style="font-weight: bold; margin-bottom: 8px; color: var(--text-gold); font-size: 0.85rem;">No template loaded</div>
+                            <table id="templateTable" style="width: 100%; font-size: 0.75rem;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 30px; padding: 6px 4px;">#</th>
+                                        <th style="padding: 6px 4px;">Name</th>
+                                        <th style="width: 60px; padding: 6px 4px;">Type</th>
+                                        <th style="padding: 6px 4px;">Position</th>
+                                        <th style="width: 50px; padding: 6px 4px;">Delay</th>
+                                        <th style="width: 60px; padding: 6px 4px;">Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="templateTableBody">
+                                    <tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 15px;">Load a config file to see steps</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Run buttons -->
+                        <div class="grid-2" style="margin-bottom: 8px;">
+                            <button class="btn btn-enable" onclick="runTemplate()">▶ Run Template</button>
+                            <button class="btn btn-primary" onclick="runTemplateLoop()">Loop Template</button>
+                        </div>
+                        <button class="btn btn-emergency" onclick="emergencyStop()" style="width: 100%; font-size: 1em; padding: 12px;">STOP</button>
+                    </div>
+
+                    <!-- OSC Control -->
+                    <div class="osc-block" id="oscSection">
+                        <h4>OSC Control</h4>
+
+                        <div class="receiver-status">
+                            <span class="status-dot disconnected" id="oscStatusDot"></span>
+                            <span id="oscStatusText">Disconnected</span>
+                        </div>
+
+                        <!-- Connection Info (shown when connected) -->
+                        <div id="oscConnectionInfo" style="display: none; margin-bottom: 10px; padding: 8px; background: var(--bg-dark); border-radius: 4px; font-size: 0.75rem;">
+                            <div id="oscRecvInfo" style="color: var(--accent-blue); margin-bottom: 3px;"></div>
+                            <div id="oscSendInfo" style="color: var(--accent-green);"></div>
+                        </div>
+
+                        <!-- OSC Mode Selection -->
+                        <div class="config-label" style="margin-bottom: 5px;">Mode:</div>
+                        <div style="display: flex; gap: 12px; margin-bottom: 10px;">
+                            <label style="display: flex; align-items: center; gap: 5px; font-size: 0.8rem; cursor: pointer;">
+                                <input type="radio" name="oscMode" value="1" style="margin: 0; width: auto;">
+                                <span>Receive</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px; font-size: 0.8rem; cursor: pointer;">
+                                <input type="radio" name="oscMode" value="2" style="margin: 0; width: auto;">
+                                <span>Send</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 5px; font-size: 0.8rem; cursor: pointer;">
+                                <input type="radio" name="oscMode" value="3" checked style="margin: 0; width: auto;">
+                                <span>Both</span>
+                            </label>
+                        </div>
+
+                        <!-- Receiver Settings -->
+                        <div style="background: var(--bg-dark); padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+                            <div class="config-label" style="color: var(--accent-blue); margin-bottom: 5px;">Receiver (Listen on):</div>
+                            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px;">
+                                <div>
+                                    <input type="text" id="oscRecvIp" value="0.0.0.0" placeholder="0.0.0.0" style="margin: 0;">
+                                </div>
+                                <div>
+                                    <input type="number" id="oscRecvPort" value="8000" placeholder="8000" style="margin: 0;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Sender Settings -->
+                        <div style="background: var(--bg-dark); padding: 8px; border-radius: 4px; margin-bottom: 10px;">
+                            <div class="config-label" style="color: var(--accent-green); margin-bottom: 5px;">Sender (Send to):</div>
+                            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px;">
+                                <div>
+                                    <input type="text" id="oscSendIp" value="127.0.0.1" placeholder="127.0.0.1" style="margin: 0;">
+                                </div>
+                                <div>
+                                    <input type="number" id="oscSendPort" value="9000" placeholder="9000" style="margin: 0;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid-2">
+                            <button class="btn btn-enable" onclick="oscConnect()" id="oscConnectBtn">Start OSC</button>
+                            <button class="btn btn-disable" onclick="oscDisconnect()" id="oscDisconnectBtn" disabled>Stop OSC</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PV Actions -->
+                <div id="pvActions" class="hidden">
+                    <div class="control-block" id="pvMovementBlock">
+                        <h4>Velocity Control</h4>
+                        <select id="slaveSelectVel" onchange="updateButtonStates()">
+                            <option value="">-- Select Slave --</option>
+                        </select>
+                        <div class="velocity-btns" id="pvVelocityBtns">
+                            <button class="btn btn-enable" onclick="velocityForward()" id="velForwardBtn" disabled>▲ FORWARD</button>
+                            <button class="btn btn-emergency" onclick="emergencyStop()">STOP</button>
+                            <button class="btn btn-primary" onclick="velocityBackward()" id="velBackwardBtn" disabled>▼ BACKWARD</button>
+                        </div>
+                    </div>
+
+                    <!-- PV Speed Block -->
+                    <div class="speed-block pv" id="speedPV">
+                        <h4>PV Speed Settings</h4>
+                        <div class="config-label">Speed (x1000 units/s):</div>
+                        <input type="number" id="pvSpeed" value="50" oninput="updatePVEffective()">
+                        <div class="speed-info">
+                            Velocity: <span id="pvEffectiveVel">50000</span> units/s |
+                            Accel/Decel: <span id="pvEffectiveAccel">25000</span> units/s²
+                        </div>
+                        <button class="btn btn-gold" onclick="applyPVSpeed()" style="width: 100%;">Apply PV Speed</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-time Status -->
+        <div class="section">
+            <h2 class="section-title">
+                Real-time Status
+                <div class="status-controls">
+                    <button class="btn btn-reset" id="resetBtn" onclick="sendCmd('reset')">Reset</button>
+                    <button class="btn btn-enable" id="enableBtn" onclick="sendCmd('enable')">Enable</button>
+                    <button class="btn btn-disable" id="disableBtn" onclick="sendCmd('disable')">Disable</button>
+                    <button class="btn terminate-btn" onclick="terminateProgram()">Terminate</button>
+                </div>
+            </h2>
+
+            <div class="status-item">
+                <span class="status-label">EtherCAT Status:</span>
+                <span class="status-value status-connected" id="ethercatStatus">Disconnected</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Network Interface:</span>
+                <span class="status-value" id="interfaceDisplay">Not connected</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Operation Mode:</span>
+                <span class="status-value" id="modeLabel">--</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Slave Count:</span>
+                <span class="status-value" id="slaveCount">0</span>
+            </div>
+
+            <!-- Homing Block -->
+            <div class="homing-block">
+                <h4>Homing Control</h4>
+                <select id="homeSlaveSelect" onchange="updateButtonStates()">
+                    <option value="">-- Select Slave --</option>
+                </select>
+                <button class="btn btn-gold" onclick="setHome()" style="width: 100%; margin: 8px 0;" id="setHomeBtn" disabled>Set Home for Selected</button>
+                <button class="btn btn-gold" onclick="setHomeAll()" style="width: 100%;" id="setHomeAllBtn" disabled>Set Home All Slaves</button>
+            </div>
+
+            <h3 style="color: var(--text-secondary); font-size: 0.8rem; margin: 15px 0 10px; text-transform: uppercase;">Slave Devices</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 30px;"></th>
+                        <th>ID</th>
+                        <th>Position (m)</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="positionTable">
+                    <tr>
+                        <td><span class="indicator indicator-disabled"></span></td>
+                        <td>#01</td>
+                        <td>0.0000</td>
+                        <td>--</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- System Log -->
+            <h3 style="color: var(--text-secondary); font-size: 0.8rem; margin: 20px 0 10px; text-transform: uppercase;">System Log</h3>
+            <div id="log-window"></div>
+            <button class="btn btn-outline" onclick="clearLogs()" style="width: 100%; margin-top: 10px;">Clear Logs</button>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let reconnectTimer = null;
+        let isTerminating = false;
+        let hasFault = true;
+        let isEnabled = false;
+        let selectedMode = 8; // CSP default
+        let isTemplateRunning = false; // Track if template is running
+
+        // Toggle UI version
+        function toggleUI() {
+            const isNewUI = document.getElementById('uiToggle').checked;
+            if (!isNewUI) {
+                window.location.href = 'ui.html';
+            }
+        }
+
+        // Connect WebSocket
+        function connectWS() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+            try {
+                ws = new WebSocket(wsUrl);
+            } catch (e) {
+                log('WebSocket creation failed', 'err');
+                return;
+            }
+
+            ws.onopen = () => {
+                document.getElementById('wsDot').className = 'status-dot enabled';
+                log('WebSocket connected', 'sys');
+                window.wsRetryCount = 0;
+                if (reconnectTimer) {
+                    clearInterval(reconnectTimer);
+                    reconnectTimer = null;
+                }
+                setTimeout(() => refreshConfigList(), 500);
+            };
+
+            ws.onclose = (event) => {
+                document.getElementById('wsDot').className = 'status-dot disconnected';
+                if (isTerminating) {
+                    log('Program terminated - connection closed', 'sys');
+                    return;
+                }
+                log(`WebSocket disconnected (code: ${event.code})`, 'wrn');
+                if (!reconnectTimer) {
+                    window.wsRetryCount = (window.wsRetryCount || 0) + 1;
+                    const retryDelay = Math.min(1000 * window.wsRetryCount, 5000);
+                    log(`Reconnecting in ${retryDelay/1000}s...`, 'sys');
+                    reconnectTimer = setTimeout(() => {
+                        reconnectTimer = null;
+                        connectWS();
+                    }, retryDelay);
+                }
+            };
+
+            ws.onerror = (e) => {
+                if (isTerminating) return;
+                log('WebSocket error - check server connection', 'err');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'status') {
+                        updateStatus(msg.data);
+                    } else if (msg.type === 'response') {
+                        handleResponse(msg.data);
+                    }
+                } catch (e) {
+                    console.error('Message parse error:', e);
+                }
+            };
+        }
+
+        // Update UI with status
+        function updateStatus(status) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            const modeLabel = document.getElementById('modeLabel');
+            const slaveCountEl = document.getElementById('slaveCount');
+            const modeSelector = document.getElementById('modeSelector');
+            const interfaceDisplay = document.getElementById('interfaceDisplay');
+            const ethercatStatus = document.getElementById('ethercatStatus');
+
+            const statusWords = status.status_words || [];
+            const errorCodes = status.error_codes || [];
+            let faultDetected = false;
+            let faultSlaves = [];
+
+            for (let i = 0; i < statusWords.length; i++) {
+                if (statusWords[i] & 0x0008) {
+                    faultDetected = true;
+                    faultSlaves.push(i);
+                }
+            }
+
+            hasFault = faultDetected;
+            isEnabled = status.state === 2;
+
+            // Update status dot
+            dot.className = 'status-dot';
+            if (faultDetected) {
+                dot.classList.add('fault');
+                text.textContent = `FAULT (Slave ${faultSlaves.map(s => `#${s+1}`).join(', ')})`;
+                text.style.color = 'var(--accent-red)';
+                ethercatStatus.textContent = 'FAULT';
+                ethercatStatus.style.color = 'var(--accent-red)';
+            } else {
+                text.style.color = '';
+                if (status.state === 0) {
+                    dot.classList.add('disconnected');
+                    text.textContent = 'Disconnected';
+                    ethercatStatus.textContent = 'Disconnected';
+                    ethercatStatus.style.color = 'var(--accent-red)';
+                } else if (status.state === 1) {
+                    dot.classList.add('connected');
+                    text.textContent = 'Connected';
+                    ethercatStatus.textContent = 'Connected';
+                    ethercatStatus.style.color = 'var(--text-gold)';
+                } else if (status.state === 2) {
+                    dot.classList.add('enabled');
+                    text.textContent = 'Enabled';
+                    ethercatStatus.textContent = 'Enabled';
+                    ethercatStatus.style.color = 'var(--accent-green)';
+                }
+                if (status.moving) {
+                    dot.classList.remove('enabled', 'connected');
+                    dot.classList.add('moving');
+                    text.textContent += ' (Moving...)';
+                }
+            }
+
+            // Update mode
+            if (status.mode !== undefined) {
+                selectedMode = status.mode;
+                const modeNames = {1: 'PP', 3: 'PV', 8: 'CSP'};
+                modeLabel.textContent = modeNames[status.mode] || status.mode;
+                modeSelector.value = status.mode.toString();
+                updateModeDisplay(status.mode);
+            }
+
+            // Update slave count
+            const numSlaves = status.num_slaves || status.positions?.length || 0;
+            slaveCountEl.textContent = numSlaves;
+
+            // Update interface
+            if (status.interface) {
+                interfaceDisplay.textContent = status.interface;
+            }
+
+            // Update position table
+            updatePositionTable(status);
+            updateSlaveSelector(numSlaves);
+
+            // Update UI state (steps, controls visibility)
+            updateInterfaceState();
+
+            // Update all button states based on current state
+            updateAllButtonStates();
+
+            // Update UDP/OSC status
+            if (status.udp_connected !== undefined) {
+                updateUdpStatus(status.udp_connected);
+            }
+            if (status.osc_connected !== undefined) {
+                updateOscStatus(status.osc_connected);
+            }
+        }
+
+        // Update interface state (steps visibility)
+        function updateInterfaceState() {
+            // Step 1: Show when there's a fault
+            document.getElementById('step1').classList.toggle('hidden', !hasFault);
+            document.getElementById('errorControls').classList.toggle('hidden', !hasFault);
+
+            // Step 2: Show when no fault and not enabled
+            const showStep2 = !hasFault && !isEnabled;
+            document.getElementById('step2').classList.toggle('hidden', !showStep2);
+            document.getElementById('startupControls').classList.toggle('hidden', !showStep2);
+
+            // Step 3: Show when enabled
+            const showStep3 = isEnabled;
+            document.getElementById('step3').classList.toggle('hidden', !showStep3);
+            document.getElementById('modeActions').classList.toggle('hidden', !showStep3);
+
+            if (isEnabled) {
+                showCorrectModeActions();
+                updateStep3Instructions();
+            }
+        }
+
+        // Update all button states based on fault/enabled state
+        function updateAllButtonStates() {
+            const enableBtn = document.getElementById('enableBtn');
+            const resetBtn = document.getElementById('resetBtn');
+            const modeSelector = document.getElementById('modeSelector');
+            const setHomeBtn = document.getElementById('setHomeBtn');
+            const setHomeAllBtn = document.getElementById('setHomeAllBtn');
+
+            // Enable/Reset buttons
+            if (hasFault) {
+                enableBtn.disabled = true;
+                enableBtn.title = 'Clear faults first';
+                modeSelector.disabled = true;
+                modeSelector.title = 'Clear faults first';
+                resetBtn.disabled = false;
+            } else if (isEnabled) {
+                enableBtn.disabled = true;
+                enableBtn.textContent = 'Enabled';
+                modeSelector.disabled = true;
+                modeSelector.title = 'Disable first to change mode';
+                resetBtn.disabled = true;
+            } else {
+                enableBtn.disabled = false;
+                enableBtn.textContent = 'Enable';
+                enableBtn.title = '';
+                modeSelector.disabled = false;
+                modeSelector.title = '';
+                resetBtn.disabled = false;
+            }
+
+            // Set Home buttons - disabled when enabled or has fault
+            if (setHomeBtn) {
+                const homeSlaveSelected = document.getElementById('homeSlaveSelect').value !== '';
+                if (isEnabled || hasFault) {
+                    setHomeBtn.disabled = true;
+                    setHomeBtn.title = isEnabled ? 'Disable drives first' : 'Clear faults first';
+                } else {
+                    setHomeBtn.disabled = !homeSlaveSelected;
+                    setHomeBtn.title = homeSlaveSelected ? '' : 'Select a slave first';
+                }
+            }
+
+            if (setHomeAllBtn) {
+                if (isEnabled || hasFault) {
+                    setHomeAllBtn.disabled = true;
+                    setHomeAllBtn.title = isEnabled ? 'Disable drives first' : 'Clear faults first';
+                } else {
+                    setHomeAllBtn.disabled = false;
+                    setHomeAllBtn.title = '';
+                }
+            }
+
+            // All to Home buttons - enabled only when drives are enabled and no fault
+            const allToHomeBtn = document.getElementById('allToHomeBtn');
+            const allToHomePPBtn = document.getElementById('allToHomePPBtn');
+            const canMoveAllHome = isEnabled && !hasFault;
+
+            if (allToHomeBtn) {
+                allToHomeBtn.disabled = !canMoveAllHome;
+                allToHomeBtn.title = hasFault ? 'Clear faults first' : (!isEnabled ? 'Enable drives first' : '');
+            }
+            if (allToHomePPBtn) {
+                allToHomePPBtn.disabled = !canMoveAllHome;
+                allToHomePPBtn.title = hasFault ? 'Clear faults first' : (!isEnabled ? 'Enable drives first' : '');
+            }
+
+            // Update mode-specific button states
+            updateButtonStates();
+        }
+
+        // Update button states based on slave selection
+        function updateButtonStates() {
+            // CSP mode buttons
+            const cspSlaveSelected = document.getElementById('slaveSelect').value !== '';
+            const cspQuickBtns = document.querySelectorAll('#cspQuickBtns button');
+            cspQuickBtns.forEach(btn => {
+                btn.disabled = !cspSlaveSelected;
+            });
+            const executeMoveBtn = document.getElementById('executeMoveBtn');
+            if (executeMoveBtn) {
+                executeMoveBtn.disabled = !cspSlaveSelected;
+            }
+
+            // PP mode buttons
+            const ppSlaveSelected = document.getElementById('slaveSelectPP').value !== '';
+            const ppQuickBtns = document.querySelectorAll('#ppQuickBtns button');
+            ppQuickBtns.forEach(btn => {
+                btn.disabled = !ppSlaveSelected;
+            });
+            const executeMovePPBtn = document.getElementById('executeMovePPBtn');
+            if (executeMovePPBtn) {
+                executeMovePPBtn.disabled = !ppSlaveSelected;
+            }
+
+            // PV mode buttons
+            const pvSlaveSelected = document.getElementById('slaveSelectVel').value !== '';
+            const velForwardBtn = document.getElementById('velForwardBtn');
+            const velBackwardBtn = document.getElementById('velBackwardBtn');
+            if (velForwardBtn) velForwardBtn.disabled = !pvSlaveSelected;
+            if (velBackwardBtn) velBackwardBtn.disabled = !pvSlaveSelected;
+
+            // Home slave select button
+            const homeSlaveSelected = document.getElementById('homeSlaveSelect').value !== '';
+            const setHomeBtn = document.getElementById('setHomeBtn');
+            if (setHomeBtn && !isEnabled && !hasFault) {
+                setHomeBtn.disabled = !homeSlaveSelected;
+            }
+
+            // Clear error button
+            const clearErrorSlaveSelected = document.getElementById('clearErrorSlaveSelect').value !== '';
+            const clearErrorBtn = document.getElementById('clearErrorBtn');
+            if (clearErrorBtn) {
+                clearErrorBtn.disabled = !clearErrorSlaveSelected;
+            }
+        }
+
+        // Update mode display
+        function updateModeDisplay(mode) {
+            const modeNames = {8: 'CSP (Cyclic Sync Position)', 1: 'PP (Profile Position)', 3: 'PV (Profile Velocity)'};
+            document.getElementById('currentModeDisplay').textContent = `Selected Mode: ${modeNames[mode] || mode}`;
+        }
+
+        function showCorrectModeActions() {
+            document.getElementById('cspActions').classList.add('hidden');
+            document.getElementById('ppActions').classList.add('hidden');
+            document.getElementById('pvActions').classList.add('hidden');
+
+            if (selectedMode === 8) {
+                document.getElementById('cspActions').classList.remove('hidden');
+            } else if (selectedMode === 1) {
+                document.getElementById('ppActions').classList.remove('hidden');
+            } else if (selectedMode === 3) {
+                document.getElementById('pvActions').classList.remove('hidden');
+            }
+        }
+
+        function updateStep3Instructions() {
+            const title = document.getElementById('step3Title');
+            const list = document.getElementById('step3List');
+
+            if (selectedMode === 8) {
+                title.textContent = 'Step 3: CSP Mode Active';
+                list.innerHTML = `
+                    <li>Select a slave from the dropdown to control</li>
+                    <li>Use quick move buttons or enter custom position</li>
+                    <li>Adjust <strong>CSP Speed</strong> settings as needed</li>
+                    <li>Use UDP Receiver for external control integration</li>
+                `;
+            } else if (selectedMode === 1) {
+                title.textContent = 'Step 3: PP Mode Active';
+                list.innerHTML = `
+                    <li>Use Custom Movement to move individual slaves</li>
+                    <li>Load and run templates for automated sequences</li>
+                    <li>Adjust <strong>PP Speed</strong> for velocity and acceleration</li>
+                    <li>Use OSC Control for external application integration</li>
+                `;
+            } else if (selectedMode === 3) {
+                title.textContent = 'Step 3: PV Mode Active';
+                list.innerHTML = `
+                    <li>Select a slave to control</li>
+                    <li>Use Forward/Backward for continuous motion</li>
+                    <li>Adjust <strong>PV Speed</strong> before starting motion</li>
+                    <li>Press STOP to halt motion immediately</li>
+                `;
+            }
+        }
+
+        // Update position table
+        function updatePositionTable(status) {
+            const tbody = document.getElementById('positionTable');
+            const positions = status.positions || [];
+            const statusWords = status.status_words || [];
+            const errorCodes = status.error_codes || [];
+
+            let html = '';
+            for (let i = 0; i < positions.length; i++) {
+                const pos = positions[i].toFixed(4);
+                const sw = statusWords[i] || 0;
+                const enabled = (sw & 0x006F) === 0x0027;
+                const fault = (sw & 0x0008) !== 0;
+
+                let indicatorClass = 'indicator-disabled';
+                let statusText = 'Disabled';
+
+                if (fault) {
+                    indicatorClass = 'indicator-error';
+                    const errorCode = errorCodes[i] || 0;
+                    statusText = `Error (0x${errorCode.toString(16).toUpperCase()})`;
+                } else if (enabled) {
+                    indicatorClass = 'indicator-ok';
+                    statusText = 'Enabled';
+                }
+
+                html += `
+                    <tr>
+                        <td><span class="indicator ${indicatorClass}"></span></td>
+                        <td>#${String(i + 1).padStart(2, '0')}</td>
+                        <td>${pos}</td>
+                        <td style="color: ${fault ? 'var(--accent-red)' : 'inherit'}">${statusText}</td>
+                    </tr>
+                `;
+            }
+            if (html) tbody.innerHTML = html;
+        }
+
+        // Update slave selector
+        function updateSlaveSelector(count) {
+            const selectors = ['slaveSelect', 'slaveSelectPP', 'slaveSelectVel', 'homeSlaveSelect', 'clearErrorSlaveSelect'];
+
+            selectors.forEach(id => {
+                const select = document.getElementById(id);
+                if (!select) return;
+
+                const currentVal = select.value;
+                const currentCount = select.options.length - 1;
+                if (currentCount === count && count > 0) return;
+
+                let html = '<option value="">-- Select Slave --</option>';
+                for (let i = 0; i < count; i++) {
+                    html += `<option value="${i}">Slave #${i + 1}</option>`;
+                }
+                select.innerHTML = html;
+
+                if (currentVal !== '' && parseInt(currentVal) < count) {
+                    select.value = currentVal;
+                }
+            });
+
+            updateButtonStates();
+        }
+
+        // Handle response
+        function handleResponse(resp) {
+            if (resp.success) {
+                log(resp.message, 'sys');
+            } else {
+                log(resp.message, 'err');
+            }
+
+            // Handle config files list
+            if (resp.data && resp.data.config_files) {
+                console.log('Config files received:', resp.data.config_files);
+                updateConfigList(resp.data.config_files);
+            }
+
+            // Handle loaded config
+            if (resp.data && resp.data.config) {
+                updateConfigInfo(resp.data.config);
+            }
+
+            // Handle OSC log entries
+            if (resp.data && resp.data.osc_log) {
+                addOscLogEntry(resp.data.osc_log);
+            }
+
+            // Handle template step updates
+            if (resp.data && resp.data.template_step) {
+                const step = resp.data.template_step;
+                log(`[Step ${step.index}/${step.total}] ${step.name}`, 'sys');
+                highlightTemplateStep(step.index);
+            }
+
+            // Handle template complete
+            if (resp.data && resp.data.template_complete) {
+                log('Template complete', 'sys');
+                clearTemplateHighlight();
+                setTemplateRunning(false);
+            }
+
+            // Handle template stopped (by stop command)
+            if (resp.message && (resp.message.includes('STOP') || resp.message.includes('stopped'))) {
+                setTemplateRunning(false);
+                clearTemplateHighlight();
+            }
+        }
+
+        // Add OSC log entry to the log window
+        function addOscLogEntry(entry) {
+            const time = new Date().toLocaleTimeString();
+            if (entry.type === 'recv') {
+                log(`[OSC RECV] ${entry.message}`, 'com');
+            } else if (entry.type === 'send') {
+                log(`[OSC SEND] ${entry.message}`, 'sys');
+            } else {
+                log(`[OSC] ${entry.message}`, 'sys');
+            }
+        }
+
+        // Highlight current template step
+        function highlightTemplateStep(stepIndex) {
+            // Clear previous highlights
+            clearTemplateHighlight();
+
+            // Highlight current step
+            const row = document.getElementById(`step-row-${stepIndex}`);
+            if (row) {
+                row.style.background = 'rgba(88, 166, 255, 0.15)';
+                row.style.borderLeft = '3px solid var(--accent-blue)';
+            }
+        }
+
+        // Clear template step highlights
+        function clearTemplateHighlight() {
+            const rows = document.querySelectorAll('[id^="step-row-"]');
+            rows.forEach(row => {
+                row.style.background = '';
+                row.style.borderLeft = '';
+            });
+        }
+
+        // Send command
+        function sendCmd(cmd, data = null) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ cmd, data }));
+                if (cmd !== 'load_config') {
+                    log(`Command: ${cmd}`, 'com');
+                }
+            } else {
+                log('WebSocket not connected', 'err');
+            }
+        }
+
+        // Change mode
+        function changeMode() {
+            const mode = parseInt(document.getElementById('modeSelector').value);
+            sendCmd('set_mode', { mode: mode });
+            selectedMode = mode;
+            updateModeDisplay(mode);
+            log(`Changing mode to ${mode === 8 ? 'CSP' : mode === 1 ? 'PP' : 'PV'}`, 'com');
+        }
+
+        // CSP Movement functions
+        function moveTo(position) {
+            const slave = document.getElementById('slaveSelect').value;
+            if (slave === '') {
+                log('Please select a slave first', 'err');
+                return;
+            }
+            sendCmd('move', { positions: [position], slave: parseInt(slave) });
+            log(`Moving Slave #${parseInt(slave) + 1} to ${position}m`, 'com');
+        }
+
+        function executeMove() {
+            const slave = document.getElementById('slaveSelect').value;
+            const position = parseFloat(document.getElementById('targetPosition').value);
+            if (slave === '') {
+                log('Please select a slave first', 'err');
+                return;
+            }
+            if (isNaN(position)) {
+                log('Please enter a valid position', 'err');
+                return;
+            }
+            sendCmd('move', { positions: [position], slave: parseInt(slave) });
+            log(`Moving Slave #${parseInt(slave) + 1} to ${position}m`, 'com');
+        }
+
+        // PP Movement functions
+        function moveToPP(position) {
+            const slave = document.getElementById('slaveSelectPP').value;
+            if (slave === '') {
+                log('Please select a slave first', 'err');
+                return;
+            }
+            sendCmd('move', { positions: [position], slave: parseInt(slave) });
+            log(`Moving Slave #${parseInt(slave) + 1} to ${position}m`, 'com');
+        }
+
+        function executeMovePP() {
+            const slave = document.getElementById('slaveSelectPP').value;
+            const position = parseFloat(document.getElementById('targetPositionPP').value);
+            if (slave === '') {
+                log('Please select a slave first', 'err');
+                return;
+            }
+            if (isNaN(position)) {
+                log('Please enter a valid position', 'err');
+                return;
+            }
+            sendCmd('move', { positions: [position], slave: parseInt(slave) });
+            log(`Moving Slave #${parseInt(slave) + 1} to ${position}m`, 'com');
+        }
+
+        function moveAllToHome() {
+            sendCmd('move_all_home');
+            log('Moving all slaves to home position', 'com');
+        }
+
+        function emergencyStop() {
+            sendCmd('stop');
+            log('EMERGENCY STOP - All motion stopped!', 'err');
+            // Stop template if running
+            if (isTemplateRunning) {
+                setTemplateRunning(false);
+                clearTemplateHighlight();
+            }
+        }
+
+        // Velocity functions
+        function velocityForward() {
+            const slave = document.getElementById('slaveSelectVel').value;
+            if (slave === '') {
+                log('Please select a slave first', 'err');
+                return;
+            }
+            const speed = parseInt(document.getElementById('pvSpeed').value) * 1000;
+            sendCmd('velocity_forward', { slave: parseInt(slave), speed: speed });
+            log(`Slave #${parseInt(slave) + 1} Forward: ${speed} units/s`, 'com');
+        }
+
+        function velocityBackward() {
+            const slave = document.getElementById('slaveSelectVel').value;
+            if (slave === '') {
+                log('Please select a slave first', 'err');
+                return;
+            }
+            const speed = parseInt(document.getElementById('pvSpeed').value) * 1000;
+            sendCmd('velocity_backward', { slave: parseInt(slave), speed: speed });
+            log(`Slave #${parseInt(slave) + 1} Backward: ${speed} units/s`, 'com');
+        }
+
+        // Homing functions
+        function setHome() {
+            const slave = document.getElementById('homeSlaveSelect').value;
+            if (slave === '') {
+                log('Please select a slave first', 'err');
+                return;
+            }
+            sendCmd('set_home', { slave: parseInt(slave) });
+            log(`Setting home for Slave #${parseInt(slave) + 1}`, 'com');
+        }
+
+        function setHomeAll() {
+            sendCmd('set_home_all');
+            log('Setting home for all slaves', 'com');
+        }
+
+        // Clear error
+        function clearError() {
+            const slave = document.getElementById('clearErrorSlaveSelect').value;
+            if (slave === '') {
+                log('Please select a slave first', 'err');
+                return;
+            }
+            sendCmd('clear_error', { slave: parseInt(slave) });
+            log(`Clearing error for Slave #${parseInt(slave) + 1}`, 'com');
+        }
+
+        // Speed functions
+        function updatePPEffective() {
+            const speed = parseInt(document.getElementById('ppSpeed').value) || 80;
+            document.getElementById('ppEffectiveVel').textContent = (speed * 1000).toLocaleString();
+            document.getElementById('ppEffectiveAccel').textContent = (speed * 500).toLocaleString();
+        }
+
+        function updateCSPEffective() {
+            const maxStep = parseInt(document.getElementById('cspMaxStep').value) || 800;
+            document.getElementById('cspEffectiveVel').textContent = (maxStep * 1000).toLocaleString();
+        }
+
+        function updatePVEffective() {
+            const speed = parseInt(document.getElementById('pvSpeed').value) || 50;
+            document.getElementById('pvEffectiveVel').textContent = (speed * 1000).toLocaleString();
+            document.getElementById('pvEffectiveAccel').textContent = (speed * 500).toLocaleString();
+        }
+
+        function applyPPSpeed() {
+            const speedUnit = parseInt(document.getElementById('ppSpeed').value) || 80;
+            const velocity = speedUnit * 1000;
+            const acceleration = velocity / 2;
+            sendCmd('set_speed', { velocity: velocity, acceleration: acceleration, deceleration: acceleration });
+            log(`PP Speed applied: Vel=${velocity}, Accel=${acceleration}`, 'sys');
+        }
+
+        function applyCSPSpeed() {
+            const maxStep = parseInt(document.getElementById('cspMaxStep').value) || 800;
+            sendCmd('set_csp_max_step', { max_step: maxStep });
+            log(`CSP Max Step applied: ${maxStep} units/ms`, 'sys');
+        }
+
+        function applyPVSpeed() {
+            const speedUnit = parseInt(document.getElementById('pvSpeed').value) || 50;
+            const velocity = speedUnit * 1000;
+            const acceleration = velocity / 2;
+            sendCmd('set_speed', { velocity: velocity, acceleration: acceleration, deceleration: acceleration });
+            log(`PV Speed applied: Vel=${velocity}, Accel=${acceleration}`, 'sys');
+        }
+
+        // Store loaded config globally
+        let loadedConfig = null;
+
+        // Template functions
+        async function refreshConfigList() {
+            // Try HTTP API first (more reliable), fallback to WebSocket
+            try {
+                const response = await fetch('/api/configs');
+                const data = await response.json();
+                if (data.config_files) {
+                    updateConfigList(data.config_files);
+                    log(`Found ${data.config_files.length} config files`, 'sys');
+                } else {
+                    log('No config files found', 'wrn');
+                }
+            } catch (e) {
+                // Fallback to WebSocket command
+                console.log('HTTP API failed, trying WebSocket:', e);
+                sendCmd('list_configs');
+            }
+        }
+
+        function updateConfigList(files) {
+            const select = document.getElementById('configFileName');
+            let html = '<option value="">-- Select Config --</option>';
+            files.forEach(f => {
+                html += `<option value="${f}">${f}</option>`;
+            });
+            select.innerHTML = html;
+            log(`Config list updated: ${files.length} files`, 'sys');
+        }
+
+        function loadConfigFile() {
+            const filename = document.getElementById('configFileName').value;
+            if (!filename) {
+                log('Please select a config file', 'err');
+                return;
+            }
+            sendCmd('load_config', { filename: filename });
+            log(`Loading config: ${filename}`, 'com');
+        }
+
+        function updateConfigInfo(config) {
+            loadedConfig = config;
+
+            // Show config info panel
+            const configInfo = document.getElementById('configInfo');
+            if (configInfo) {
+                configInfo.style.display = 'block';
+            }
+
+            // Update config info fields - support both old (settings) and new (slaves/speed) formats
+            const slaves = config.slaves || {};
+            const speed = config.speed || {};
+            const template = config.template || {};
+            const positions = config.positions || {};
+
+            document.getElementById('cfgOpMode').textContent = template.operation_mode || 'both';
+            document.getElementById('cfgSlaveCount').textContent = slaves.count || '--';
+
+            // Movement slaves
+            const movementSlaves = slaves.movement_slaves || [];
+            document.getElementById('cfgMovementSlaves').textContent = movementSlaves.length > 0 ? movementSlaves.map(s => `#${s+1}`).join(', ') : '--';
+
+            // Rotation slaves
+            const rotationSlaves = slaves.rotation_slaves || [];
+            document.getElementById('cfgRotationSlaves').textContent = rotationSlaves.length > 0 ? rotationSlaves.map(s => `#${s+1}`).join(', ') : '--';
+
+            // Speeds - support both formats
+            const movementSpeed = speed.movement_speed || {};
+            const rotationSpeed = speed.rotation_speed || {};
+            document.getElementById('cfgMovementSpeed').textContent = movementSpeed.velocity ? `${movementSpeed.velocity} u/s` : '--';
+            document.getElementById('cfgRotationSpeed').textContent = rotationSpeed.velocity ? `${rotationSpeed.velocity} u/s` : '--';
+
+            // Movement mode
+            const isSimultaneous = slaves.simultaneous !== false;
+            document.getElementById('cfgMovementMode').textContent = isSimultaneous ? 'Simultaneous' : `Staggered (${slaves.slave_delay_ms || 0}ms delay)`;
+
+            // Update template display
+            updateTemplateDisplay(template, positions);
+
+            log(`Config loaded: ${template.name || 'Unknown'}`, 'sys');
+        }
+
+        function updateTemplateDisplay(template, positions) {
+            const nameEl = document.getElementById('templateName');
+            const tbody = document.getElementById('templateTableBody');
+
+            if (!template || !template.steps || template.steps.length === 0) {
+                nameEl.textContent = 'No template loaded';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 15px;">Load a config file to see steps</td></tr>';
+                return;
+            }
+
+            const opMode = template.operation_mode || 'both';
+            nameEl.innerHTML = `${template.name || 'SEQUENCE'} <span style="color: var(--text-secondary); font-size: 0.75rem;">(${opMode} | Loop: ${template.loop || false})</span>`;
+
+            let html = '';
+            template.steps.forEach((step, i) => {
+                const stepType = step.type || 'all';
+
+                // Resolve position reference
+                let positionDisplay = '—';
+                const posRef = step.position;
+
+                if (posRef && positions && positions[posRef]) {
+                    positionDisplay = `[${positions[posRef].join(', ')}]`;
+                } else if (posRef) {
+                    positionDisplay = posRef;
+                }
+
+                const typeColor = stepType === 'movement' ? 'var(--accent-green)' :
+                                  stepType === 'rotation' ? 'var(--accent-blue)' :
+                                  stepType === 'home' ? 'var(--accent-red)' : 'var(--text-gold)';
+                const typeLabel = stepType.charAt(0).toUpperCase() + stepType.slice(1);
+
+                html += `<tr id="step-row-${i + 1}">
+                    <td style="padding: 6px 4px;">${i + 1}</td>
+                    <td style="padding: 6px 4px;">${step.name || 'Step'}</td>
+                    <td style="padding: 6px 4px; color: ${typeColor};">${typeLabel}</td>
+                    <td style="padding: 6px 4px; font-size: 0.7rem;">${positionDisplay}</td>
+                    <td style="padding: 6px 4px;">${step.delay || 0}s</td>
+                    <td style="padding: 6px 4px;" id="step-time-${i + 1}">—</td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+
+            log(`Template: ${template.name} (${template.steps.length} steps)`, 'sys');
+        }
+
+        function applyStepsConfig() {
+            const actualSteps = parseInt(document.getElementById('actualStepsInput').value);
+            const rawSteps = parseInt(document.getElementById('rawStepsInput').value);
+            sendCmd('set_steps_config', { actual_steps: actualSteps, raw_steps: rawSteps });
+            log(`Steps config: Actual=${actualSteps}, Raw=${rawSteps}`, 'sys');
+        }
+
+        function runTemplate() {
+            if (!loadedConfig) {
+                log('Please load a config file first', 'err');
+                return;
+            }
+            sendCmd('template', { config: loadedConfig });
+            log(`Running template: ${loadedConfig.template?.name || 'Unnamed'} (single run)...`, 'com');
+            setTemplateRunning(true);
+        }
+
+        function runTemplateLoop() {
+            if (!loadedConfig) {
+                log('Please load a config file first', 'err');
+                return;
+            }
+            sendCmd('template_loop', { config: loadedConfig });
+            log(`Running template: ${loadedConfig.template?.name || 'Unnamed'} (LOOP mode)...`, 'com');
+            setTemplateRunning(true);
+        }
+
+        // Set template running state and update UI
+        function setTemplateRunning(running) {
+            isTemplateRunning = running;
+            updateTemplateControlsState();
+        }
+
+        // Update controls state based on template running
+        function updateTemplateControlsState() {
+            // PP Mode Controls
+            const ppSlaveSelect = document.getElementById('slaveSelectPP');
+            const ppQuickBtns = document.querySelectorAll('#ppQuickBtns button');
+            const executeMovePPBtn = document.getElementById('executeMovePPBtn');
+            const allToHomePPBtn = document.getElementById('allToHomePPBtn');
+            const targetPositionPP = document.getElementById('targetPositionPP');
+            const runTemplateBtn = document.querySelector('[onclick="runTemplate()"]');
+            const loopTemplateBtn = document.querySelector('[onclick="runTemplateLoop()"]');
+            const configFileSelect = document.getElementById('configFileName');
+            const loadConfigBtn = document.querySelector('[onclick="loadConfigFile()"]');
+
+            // Steps config and speed apply buttons
+            const applyStepsBtn = document.querySelector('[onclick="applyStepsConfig()"]');
+            const applyPPSpeedBtn = document.querySelector('[onclick="applyPPSpeed()"]');
+            const applyCSPSpeedBtn = document.querySelector('[onclick="applyCSPSpeed()"]');
+            const applyPVSpeedBtn = document.querySelector('[onclick="applyPVSpeed()"]');
+            const actualStepsInput = document.getElementById('actualStepsInput');
+            const rawStepsInput = document.getElementById('rawStepsInput');
+            const ppSpeedInput = document.getElementById('ppSpeed');
+            const cspMaxStepInput = document.getElementById('cspMaxStep');
+            const pvSpeedInput = document.getElementById('pvSpeed');
+
+            // OSC buttons
+            const oscConnectBtn = document.getElementById('oscConnectBtn');
+            const oscDisconnectBtn = document.getElementById('oscDisconnectBtn');
+
+            // UDP buttons
+            const udpConnectBtn = document.getElementById('udpConnectBtn');
+            const udpDisconnectBtn = document.getElementById('udpDisconnectBtn');
+
+            if (isTemplateRunning) {
+                // Disable movement controls
+                if (ppSlaveSelect) ppSlaveSelect.disabled = true;
+                ppQuickBtns.forEach(btn => btn.disabled = true);
+                if (executeMovePPBtn) executeMovePPBtn.disabled = true;
+                if (allToHomePPBtn) allToHomePPBtn.disabled = true;
+                if (targetPositionPP) targetPositionPP.disabled = true;
+
+                // Disable template controls (except stop)
+                if (runTemplateBtn) runTemplateBtn.disabled = true;
+                if (loopTemplateBtn) loopTemplateBtn.disabled = true;
+                if (configFileSelect) configFileSelect.disabled = true;
+                if (loadConfigBtn) loadConfigBtn.disabled = true;
+
+                // Disable steps config and speed controls
+                if (applyStepsBtn) applyStepsBtn.disabled = true;
+                if (applyPPSpeedBtn) applyPPSpeedBtn.disabled = true;
+                if (applyCSPSpeedBtn) applyCSPSpeedBtn.disabled = true;
+                if (applyPVSpeedBtn) applyPVSpeedBtn.disabled = true;
+                if (actualStepsInput) actualStepsInput.disabled = true;
+                if (rawStepsInput) rawStepsInput.disabled = true;
+                if (ppSpeedInput) ppSpeedInput.disabled = true;
+                if (cspMaxStepInput) cspMaxStepInput.disabled = true;
+                if (pvSpeedInput) pvSpeedInput.disabled = true;
+
+                // Disable OSC and UDP buttons
+                if (oscConnectBtn) oscConnectBtn.disabled = true;
+                if (oscDisconnectBtn) oscDisconnectBtn.disabled = true;
+                if (udpConnectBtn) udpConnectBtn.disabled = true;
+                if (udpDisconnectBtn) udpDisconnectBtn.disabled = true;
+            } else {
+                // Re-enable controls
+                if (ppSlaveSelect) ppSlaveSelect.disabled = false;
+                if (targetPositionPP) targetPositionPP.disabled = false;
+                if (configFileSelect) configFileSelect.disabled = false;
+                if (loadConfigBtn) loadConfigBtn.disabled = false;
+                if (runTemplateBtn) runTemplateBtn.disabled = false;
+                if (loopTemplateBtn) loopTemplateBtn.disabled = false;
+
+                // Re-enable steps config and speed controls
+                if (applyStepsBtn) applyStepsBtn.disabled = false;
+                if (applyPPSpeedBtn) applyPPSpeedBtn.disabled = false;
+                if (applyCSPSpeedBtn) applyCSPSpeedBtn.disabled = false;
+                if (applyPVSpeedBtn) applyPVSpeedBtn.disabled = false;
+                if (actualStepsInput) actualStepsInput.disabled = false;
+                if (rawStepsInput) rawStepsInput.disabled = false;
+                if (ppSpeedInput) ppSpeedInput.disabled = false;
+                if (cspMaxStepInput) cspMaxStepInput.disabled = false;
+                if (pvSpeedInput) pvSpeedInput.disabled = false;
+
+                // Re-enable OSC and UDP buttons (check current connection state)
+                if (oscConnectBtn) oscConnectBtn.disabled = false;
+                if (oscDisconnectBtn) oscDisconnectBtn.disabled = true; // Default to disabled until connected
+                if (udpConnectBtn) udpConnectBtn.disabled = false;
+                if (udpDisconnectBtn) udpDisconnectBtn.disabled = true; // Default to disabled until connected
+
+                // Update button states based on slave selection
+                updateButtonStates();
+            }
+
+            // CSP Mode Controls (also disable when template running)
+            const cspSlaveSelect = document.getElementById('slaveSelect');
+            const cspQuickBtns = document.querySelectorAll('#cspQuickBtns button');
+            const executeMoveBtn = document.getElementById('executeMoveBtn');
+            const allToHomeBtn = document.getElementById('allToHomeBtn');
+            const targetPosition = document.getElementById('targetPosition');
+
+            if (isTemplateRunning) {
+                if (cspSlaveSelect) cspSlaveSelect.disabled = true;
+                cspQuickBtns.forEach(btn => btn.disabled = true);
+                if (executeMoveBtn) executeMoveBtn.disabled = true;
+                if (allToHomeBtn) allToHomeBtn.disabled = true;
+                if (targetPosition) targetPosition.disabled = true;
+            } else {
+                if (cspSlaveSelect) cspSlaveSelect.disabled = false;
+                if (targetPosition) targetPosition.disabled = false;
+                updateButtonStates();
+            }
+
+            // PV Mode Controls
+            const pvSlaveSelect = document.getElementById('slaveSelectVel');
+            const velForwardBtn = document.getElementById('velForwardBtn');
+            const velBackwardBtn = document.getElementById('velBackwardBtn');
+
+            if (isTemplateRunning) {
+                if (pvSlaveSelect) pvSlaveSelect.disabled = true;
+                if (velForwardBtn) velForwardBtn.disabled = true;
+                if (velBackwardBtn) velBackwardBtn.disabled = true;
+            } else {
+                if (pvSlaveSelect) pvSlaveSelect.disabled = false;
+                updateButtonStates();
+            }
+        }
+
+        // UDP functions
+        function udpConnect() {
+            const ip = document.getElementById('udpIp').value;
+            const port = parseInt(document.getElementById('udpPort').value);
+            sendCmd('udp_connect', { ip: ip, port: port });
+            log(`Connecting UDP: ${ip}:${port}`, 'com');
+        }
+
+        function udpDisconnect() {
+            sendCmd('udp_disconnect');
+            log('Disconnecting UDP', 'com');
+        }
+
+        function updateUdpStatus(connected) {
+            const dot = document.getElementById('udpStatusDot');
+            const text = document.getElementById('udpStatusText');
+            const connectBtn = document.getElementById('udpConnectBtn');
+            const disconnectBtn = document.getElementById('udpDisconnectBtn');
+
+            if (connected) {
+                dot.className = 'status-dot enabled';
+                text.textContent = 'Connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                dot.className = 'status-dot disconnected';
+                text.textContent = 'Disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        // OSC functions
+        function oscConnect() {
+            const sendIp = document.getElementById('oscSendIp').value;
+            const sendPort = parseInt(document.getElementById('oscSendPort').value);
+            const recvIp = document.getElementById('oscRecvIp').value;
+            const recvPort = parseInt(document.getElementById('oscRecvPort').value);
+            const modeRadio = document.querySelector('input[name="oscMode"]:checked');
+            const mode = modeRadio ? parseInt(modeRadio.value) : 3;
+
+            sendCmd('osc_connect', {
+                send_ip: sendIp,
+                send_port: sendPort,
+                recv_ip: recvIp,
+                recv_port: recvPort,
+                mode: mode
+            });
+
+            const modeNames = {1: 'Receive', 2: 'Send', 3: 'Both'};
+            log(`Starting OSC (${modeNames[mode]}): Recv ${recvIp}:${recvPort}, Send ${sendIp}:${sendPort}`, 'com');
+        }
+
+        function oscDisconnect() {
+            sendCmd('osc_disconnect');
+            log('Stopping OSC', 'com');
+        }
+
+        function updateOscStatus(connected, info) {
+            const dot = document.getElementById('oscStatusDot');
+            const text = document.getElementById('oscStatusText');
+            const connectBtn = document.getElementById('oscConnectBtn');
+            const disconnectBtn = document.getElementById('oscDisconnectBtn');
+            const connectionInfo = document.getElementById('oscConnectionInfo');
+            const recvInfo = document.getElementById('oscRecvInfo');
+            const sendInfo = document.getElementById('oscSendInfo');
+
+            if (connected) {
+                dot.className = 'status-dot enabled';
+                text.textContent = 'Connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+
+                // Show connection info with IP:port
+                if (connectionInfo) {
+                    connectionInfo.style.display = 'block';
+                    if (recvInfo) {
+                        const recvIp = document.getElementById('oscRecvIp').value;
+                        const recvPort = document.getElementById('oscRecvPort').value;
+                        recvInfo.textContent = `Listening: ${recvIp}:${recvPort}`;
+                    }
+                    if (sendInfo) {
+                        const sendIp = document.getElementById('oscSendIp').value;
+                        const sendPort = document.getElementById('oscSendPort').value;
+                        sendInfo.textContent = `Sending to: ${sendIp}:${sendPort}`;
+                    }
+                }
+            } else {
+                dot.className = 'status-dot disconnected';
+                text.textContent = 'Disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                if (connectionInfo) connectionInfo.style.display = 'none';
+            }
+        }
+
+        // Terminate program
+        function terminateProgram() {
+            if (confirm('Are you sure you want to terminate the program?')) {
+                isTerminating = true;
+                sendCmd('terminate');
+                log('Terminating program...', 'wrn');
+            }
+        }
+
+        // Logging
+        function log(msg, type = 'sys') {
+            const logWindow = document.getElementById('log-window');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-ts">${time}</span><span class="log-${type}">${msg}</span>`;
+            logWindow.appendChild(entry);
+            logWindow.scrollTop = logWindow.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('log-window').innerHTML = '';
+        }
+
+        // Initialize
+        connectWS();
+        updatePPEffective();
+        updateCSPEffective();
+        updatePVEffective();
+    </script>
+</body>
+</html>
