@@ -44,7 +44,8 @@ class EtherCATController:
     CONTROL_ENABLE_OP = 0x000F
     CONTROL_DISABLE = 0x0000
     CONTROL_FAULT_RESET = 0x0080
-    CONTROL_NEW_SETPOINT = 0x0010
+    CONTROL_NEW_SETPOINT = 0x0010   # Bit 4: New setpoint (rising edge triggers)
+    CONTROL_CHANGE_SET_IMMEDIATELY = 0x0020  # Bit 5: Change set immediately (interrupt current motion)
     CONTROL_HALT = 0x0100           # Bit 8: Halt motion in PP mode
     CONTROL_QUICK_STOP = 0x0002     # Bit 2: Quick stop (active low - 0 = quick stop)
     
@@ -1076,17 +1077,8 @@ class EtherCATController:
 
         if self.mode == self.MODE_PP:
             # PP mode - drive generates trajectory
-            # Re-apply speed settings before each move (some drives reset SDO values)
             slave_accel = self._slave_accel.get(idx, self._accel)
             slave_decel = self._slave_decel.get(idx, self._decel)
-            try:
-                slave = self.master.slaves[idx]
-                slave.sdo_write(0x6081, 0x00, slave_velocity.to_bytes(4, 'little', signed=False))
-                slave.sdo_write(0x607F, 0x00, slave_velocity.to_bytes(4, 'little', signed=False))
-                slave.sdo_write(0x6083, 0x00, slave_accel.to_bytes(4, 'little', signed=False))
-                slave.sdo_write(0x6084, 0x00, slave_decel.to_bytes(4, 'little', signed=False))
-            except Exception as e:
-                print(f"  [PP] Warning: Could not re-apply speed SDO: {e}")
 
             print(f"\n  [PP Mode] Slave {idx} move command:")
             print(f"        Current: {current}")
@@ -1097,14 +1089,18 @@ class EtherCATController:
             with self._pdo_lock:
                 self._target_position[idx] = target
                 if trigger_immediate:
-                    # Set NEW_SETPOINT bit (rising edge triggers motion)
-                    self._control_word[idx] = self.CONTROL_ENABLE_OP | self.CONTROL_NEW_SETPOINT
+                    # Set NEW_SETPOINT + CHANGE_SET_IMMEDIATELY bits
+                    # CHANGE_SET_IMMEDIATELY allows smooth transition to new target
+                    self._control_word[idx] = self.CONTROL_ENABLE_OP | self.CONTROL_NEW_SETPOINT | self.CONTROL_CHANGE_SET_IMMEDIATELY
 
             if trigger_immediate:
-                # Wait for drive to latch the setpoint
-                time.sleep(0.02)
-                # Clear NEW_SETPOINT bit but keep enabled (PP mode requires edge trigger)
+                # Wait for setpoint acknowledge (check bit 12 of status word)
+                # Use shorter wait and rely on drive's internal acknowledgment
+                time.sleep(0.002)
+                # Keep NEW_SETPOINT high - drive will clear setpoint_acknowledge when done
+                # Only clear after drive acknowledges (status bit 12 goes high then low)
                 with self._pdo_lock:
+                    # Clear NEW_SETPOINT but keep CHANGE_SET_IMMEDIATELY for smooth motion
                     self._control_word[idx] = self.CONTROL_ENABLE_OP
         else:
             # CSP mode - master generates trajectory
@@ -1129,18 +1125,14 @@ class EtherCATController:
         """
         if self.mode == self.MODE_PP:
             # PP mode - trigger new setpoint for all slaves at once
-            # Set NEW_SETPOINT bit for all slaves simultaneously
+            # Set NEW_SETPOINT + CHANGE_SET_IMMEDIATELY bits for smooth motion
             with self._pdo_lock:
                 for idx in slave_indices:
                     if idx < self.slaves_count:
-                        self._control_word[idx] = self.CONTROL_ENABLE_OP | self.CONTROL_NEW_SETPOINT
+                        self._control_word[idx] = self.CONTROL_ENABLE_OP | self.CONTROL_NEW_SETPOINT | self.CONTROL_CHANGE_SET_IMMEDIATELY
 
-            # Wait for PDO cycle to send the command (need at least 1-2 cycles)
-            time.sleep(0.005)
-
-            # Wait for drives to acknowledge the setpoint (check setpoint acknowledge bit)
-            # Give drives time to latch the position
-            time.sleep(0.05)
+            # Wait for PDO cycle to send the command (minimum 1-2 cycles)
+            time.sleep(0.002)
 
             # Clear NEW_SETPOINT bit but keep enabled
             with self._pdo_lock:

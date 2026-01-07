@@ -1744,6 +1744,166 @@ class MotorProcess:
                             print(f"[load_config] Error: {e}")
                             send_response(False, f"Error loading {filename}: {e}")
                     
+                    elif cmd == 'loop_test_start':
+                        # Loop test: move slave back and forth between pos1 and pos2
+                        if not data:
+                            send_response(False, "No loop test data provided")
+                            continue
+
+                        slave = data.get('slave')
+                        pos1 = data.get('pos1', 0)
+                        pos2 = data.get('pos2', 0.1)
+                        cycles = data.get('cycles', 5)  # 0 = infinite
+
+                        if slave is None:
+                            send_response(False, "No slave specified for loop test")
+                            continue
+
+                        slave = int(slave)
+                        if slave >= ec.slaves_count:
+                            send_response(False, f"Invalid slave index: {slave}")
+                            continue
+
+                        print(f"\n[LOOP TEST] Starting: Slave {slave}, Pos1={pos1}m, Pos2={pos2}m, Cycles={cycles}")
+
+                        # Clear stop flag for this operation
+                        shared_stop.value = 0
+                        shared_moving.value = 1
+
+                        # Send immediate response
+                        send_response(True, f"Loop test started", {
+                            'loop_test': {
+                                'status': 'started',
+                                'slave': slave,
+                                'pos1': pos1,
+                                'pos2': pos2,
+                                'cycles': cycles,
+                                'current_cycle': 0
+                            }
+                        })
+
+                        # Run loop test in a thread to not block command processing
+                        def run_loop_test(slave_idx, p1, p2, num_cycles):
+                            try:
+                                max_cycles = 999999 if num_cycles == 0 else num_cycles
+                                tolerance = 0.002  # 2mm tolerance
+
+                                for cycle in range(max_cycles):
+                                    if shared_stop.value == 1:
+                                        print(f"  [LOOP TEST] Stopped by user at cycle {cycle + 1}")
+                                        break
+
+                                    # Check for faults
+                                    if ec.has_fault(slave_idx):
+                                        error_code = ec.read_error_code(slave_idx)
+                                        error_name = ec.get_error_name(error_code)
+                                        print(f"  [LOOP TEST] Fault detected: {error_name}")
+                                        send_event(2, slave_idx, error_code, f"Slave {slave_idx}: {error_name}")
+                                        break
+
+                                    # Move forward: pos1 -> pos2
+                                    print(f"  [LOOP TEST] Cycle {cycle + 1}: Moving forward to {p2}m")
+                                    send_response(True, f"Cycle {cycle + 1}: Moving forward", {
+                                        'loop_test': {
+                                            'status': 'moving_forward',
+                                            'current_cycle': cycle + 1,
+                                            'direction': 'forward'
+                                        }
+                                    })
+
+                                    # Calculate direction and start velocity movement
+                                    current_pos = ec.read_position_meters(slave_idx)
+                                    if p2 > current_pos:
+                                        ec.velocity_forward(slave_idx)
+                                    else:
+                                        ec.velocity_backward(slave_idx)
+
+                                    # Wait until reaching pos2
+                                    while abs(ec.read_position_meters(slave_idx) - p2) > tolerance:
+                                        if shared_stop.value == 1:
+                                            break
+                                        if ec.has_fault(slave_idx):
+                                            break
+                                        update_shared_status()
+                                        time.sleep(0.01)
+
+                                    ec.velocity_stop(slave_idx)
+
+                                    if shared_stop.value == 1 or ec.has_fault(slave_idx):
+                                        break
+
+                                    time.sleep(0.1)  # Small pause at target
+
+                                    # Move backward: pos2 -> pos1
+                                    print(f"  [LOOP TEST] Cycle {cycle + 1}: Moving backward to {p1}m")
+                                    send_response(True, f"Cycle {cycle + 1}: Moving backward", {
+                                        'loop_test': {
+                                            'status': 'moving_backward',
+                                            'current_cycle': cycle + 1,
+                                            'direction': 'backward'
+                                        }
+                                    })
+
+                                    current_pos = ec.read_position_meters(slave_idx)
+                                    if p1 > current_pos:
+                                        ec.velocity_forward(slave_idx)
+                                    else:
+                                        ec.velocity_backward(slave_idx)
+
+                                    # Wait until reaching pos1
+                                    while abs(ec.read_position_meters(slave_idx) - p1) > tolerance:
+                                        if shared_stop.value == 1:
+                                            break
+                                        if ec.has_fault(slave_idx):
+                                            break
+                                        update_shared_status()
+                                        time.sleep(0.01)
+
+                                    ec.velocity_stop(slave_idx)
+
+                                    if shared_stop.value == 1 or ec.has_fault(slave_idx):
+                                        break
+
+                                    time.sleep(0.1)  # Small pause at target
+
+                                    print(f"  [LOOP TEST] Cycle {cycle + 1} complete")
+
+                                # Loop test finished
+                                ec.velocity_stop(slave_idx)
+                                shared_moving.value = 0
+
+                                if shared_stop.value == 1:
+                                    send_response(True, "Loop test stopped", {
+                                        'loop_test': {'status': 'stopped'}
+                                    })
+                                else:
+                                    send_response(True, f"Loop test completed: {cycle + 1} cycles", {
+                                        'loop_test': {'status': 'completed', 'total_cycles': cycle + 1}
+                                    })
+
+                            except Exception as e:
+                                print(f"  [LOOP TEST] Error: {e}")
+                                ec.velocity_stop(slave_idx)
+                                shared_moving.value = 0
+                                send_response(False, f"Loop test error: {e}")
+
+                        # Start the loop test thread
+                        loop_test_thread = threading.Thread(
+                            target=run_loop_test,
+                            args=(slave, pos1, pos2, cycles),
+                            daemon=True
+                        )
+                        loop_test_thread.start()
+
+                    elif cmd == 'loop_test_stop':
+                        # Stop loop test by setting stop flag
+                        print("[LOOP TEST] Stop requested")
+                        shared_stop.value = 1
+                        # Also stop velocity immediately
+                        for i in range(ec.slaves_count):
+                            ec.velocity_stop(i)
+                        send_response(True, "Loop test stop requested")
+
                     elif cmd in [MotorProcess.CMD_TEMPLATE, MotorProcess.CMD_TEMPLATE_LOOP]:
                         import json
                         import os

@@ -209,9 +209,11 @@
         }
 
         .pp-row-2 {
-            display: grid;
-            grid-template-columns: 1.5fr 1fr;
-            gap: 12px;
+            display: block;
+        }
+
+        .pp-row-2 .template-block {
+            width: 100%;
         }
 
         @media (max-width: 900px) {
@@ -221,39 +223,11 @@
             .pp-row-1 .osc-block {
                 grid-column: span 2;
             }
-            .pp-row-2 {
-                grid-template-columns: 1fr;
-            }
         }
 
         /* Template block - larger for table display */
         .template-block {
             max-width: none;
-        }
-
-        /* Log block for PP mode */
-        .log-block {
-            background: var(--bg-card);
-            padding: 12px;
-            border-radius: 6px;
-            border: 1px solid var(--border-ui);
-        }
-
-        .log-block h4 {
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-        }
-
-        .log-block #pp-log-window {
-            height: 280px;
-            overflow-y: auto;
-            font-family: monospace;
-            font-size: 0.7rem;
-            background: var(--bg-dark);
-            border-radius: 4px;
-            padding: 8px;
         }
 
         /* OSC block styling */
@@ -268,6 +242,15 @@
             color: var(--accent-purple);
             margin-bottom: 8px;
             font-size: 0.75rem;
+        }
+
+        /* Loop Test block styling */
+        .loop-test-block {
+            border: 1px solid var(--text-gold);
+        }
+
+        .loop-test-block h4 {
+            color: var(--text-gold);
         }
 
         /* Compact buttons */
@@ -997,7 +980,7 @@
                         </div>
                     </div>
 
-                    <!-- Row 2: Template | Log -->
+                    <!-- Row 2: Template (full width) -->
                     <div class="pp-row-2">
                         <!-- Template Control -->
                         <div class="template-block" id="templateSection">
@@ -1055,36 +1038,31 @@
                                     </div>
                                 </div>
                             </div>
-                            <div style="background: var(--bg-dark); padding: 8px; border-radius: 6px; margin-bottom: 8px; overflow-x: auto; max-height: 180px; overflow-y: auto;">
+                            <div style="background: var(--bg-dark); padding: 8px; border-radius: 6px; margin-bottom: 8px; overflow-x: auto; max-height: 250px; overflow-y: auto;">
                                 <div id="templateName" style="font-weight: bold; margin-bottom: 6px; color: var(--text-gold); font-size: 0.8rem;">No template loaded</div>
-                                <table id="templateTable" style="width: 100%; font-size: 0.7rem;">
+                                <table id="templateTable" style="width: 100%; font-size: 0.75rem;">
                                     <thead>
                                         <tr>
-                                            <th style="width: 25px; padding: 4px;">#</th>
-                                            <th style="padding: 4px;">Name</th>
-                                            <th style="width: 55px; padding: 4px;">Type</th>
-                                            <th style="padding: 4px;">Position</th>
-                                            <th style="width: 45px; padding: 4px;">Delay</th>
-                                            <th style="width: 50px; padding: 4px;">Time</th>
+                                            <th style="width: 30px; padding: 6px 4px;">#</th>
+                                            <th style="padding: 6px 4px;">Name</th>
+                                            <th style="width: 70px; padding: 6px 4px;">Type</th>
+                                            <th style="padding: 6px 4px;">Position</th>
+                                            <th style="width: 50px; padding: 6px 4px;">Delay</th>
+                                            <th style="width: 60px; padding: 6px 4px;">Time</th>
+                                            <th style="width: 80px; padding: 6px 4px;">Order</th>
                                         </tr>
                                     </thead>
                                     <tbody id="templateTableBody">
-                                        <tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 12px;">Load a config file to see steps</td></tr>
+                                        <tr><td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 15px;">Load a config file to see steps</td></tr>
                                     </tbody>
                                 </table>
                             </div>
-                            <div class="grid-2" style="margin-bottom: 8px;">
+                            <!-- Run/Loop/Stop in single row -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
                                 <button class="btn btn-enable" onclick="runTemplate()">▶ Run</button>
-                                <button class="btn btn-primary" onclick="runTemplateLoop()">Loop</button>
+                                <button class="btn btn-primary" onclick="runTemplateLoop()">↻ Loop</button>
+                                <button class="btn btn-emergency" onclick="emergencyStop()">■ STOP</button>
                             </div>
-                            <button class="btn btn-emergency" onclick="emergencyStop()" style="width: 100%; padding: 10px;">STOP</button>
-                        </div>
-
-                        <!-- Log Window (moved from left panel) -->
-                        <div class="log-block" id="ppLogSection">
-                            <h4>System Log</h4>
-                            <div id="pp-log-window"></div>
-                            <button class="btn btn-outline btn-sm" onclick="clearPPLogs()" style="width: 100%; margin-top: 8px;">Clear Logs</button>
                         </div>
                     </div>
                 </div>
@@ -1114,6 +1092,36 @@
                             Accel/Decel: <span id="pvEffectiveAccel">25000</span> units/s²
                         </div>
                         <button class="btn btn-gold" onclick="applyPVSpeed()" style="width: 100%;">Apply PV Speed</button>
+                    </div>
+
+                    <!-- Loop Test Block -->
+                    <div class="control-block loop-test-block" id="loopTestBlock">
+                        <h4>Loop Test</h4>
+                        <select id="loopTestSlaveSelect" onchange="updateLoopTestStartBtn()">
+                            <option value="">-- Select Slave --</option>
+                        </select>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                            <div>
+                                <div class="config-label">Position 1 (m):</div>
+                                <input type="number" id="loopTestPos1" value="0" step="0.01" style="margin: 0;">
+                            </div>
+                            <div>
+                                <div class="config-label">Position 2 (m):</div>
+                                <input type="number" id="loopTestPos2" value="0.1" step="0.01" style="margin: 0;">
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <div class="config-label">Cycles (0 = infinite):</div>
+                            <input type="number" id="loopTestCycles" value="5" min="0" style="margin: 0;">
+                        </div>
+                        <div id="loopTestStatus" style="margin-bottom: 8px; padding: 6px; background: var(--bg-dark); border-radius: 4px; font-size: 0.75rem; display: none;">
+                            <span id="loopTestStatusText">Idle</span>
+                            <span id="loopTestCycleCount" style="float: right; color: var(--accent-blue);"></span>
+                        </div>
+                        <div class="grid-2">
+                            <button class="btn btn-enable" onclick="startLoopTest()" id="loopTestStartBtn" disabled>▶ Start</button>
+                            <button class="btn btn-disable" onclick="stopLoopTest()" id="loopTestStopBtn" disabled>■ Stop</button>
+                        </div>
                     </div>
                     </div>
                 </div>
@@ -1168,6 +1176,18 @@
         let isEnabled = false;
         let selectedMode = 8; // CSP default
         let isTemplateRunning = false; // Track if template is running
+
+        // Template step timing tracking
+        let stepTimings = {};  // { stepIndex: { startTime, endTime, elapsed } }
+        let currentStepIndex = null;
+        let stepTimerInterval = null;
+
+        // Loop test state
+        let loopTestRunning = false;
+        let loopTestCurrentCycle = 0;
+        let loopTestTargetCycles = 0;
+        let loopTestDirection = 'forward';  // 'forward' or 'backward'
+        let loopTestCheckInterval = null;
 
         // Toggle UI version
         function toggleUI() {
@@ -1392,11 +1412,12 @@
             const showStartup = !hasFault && !isEnabled;
             document.getElementById('startupControls').classList.toggle('hidden', !showStartup);
 
-            // Mode actions: Show when enabled
-            const showModeActions = isEnabled;
+            // Mode actions: Show when enabled AND no fault
+            // When fault occurs, hide mode actions even if enabled
+            const showModeActions = isEnabled && !hasFault;
             document.getElementById('modeActions').classList.toggle('hidden', !showModeActions);
 
-            if (isEnabled) {
+            if (showModeActions) {
                 showCorrectModeActions();
             }
 
@@ -1580,7 +1601,7 @@
 
         // Update slave selector
         function updateSlaveSelector(count) {
-            const selectors = ['slaveSelect', 'slaveSelectPP', 'slaveSelectVel', 'homeSlaveSelect', 'clearErrorSlaveSelect'];
+            const selectors = ['slaveSelect', 'slaveSelectPP', 'slaveSelectVel', 'homeSlaveSelect', 'clearErrorSlaveSelect', 'loopTestSlaveSelect'];
 
             selectors.forEach(id => {
                 const select = document.getElementById(id);
@@ -1631,21 +1652,54 @@
             // Handle template step updates
             if (resp.data && resp.data.template_step) {
                 const step = resp.data.template_step;
-                log(`[Step ${step.index}/${step.total}] ${step.name}`, 'sys');
-                highlightTemplateStep(step.index);
+
+                // Handle step timing events
+                if (step.event === 'start') {
+                    log(`[Step ${step.index}/${step.total}] ${step.name} (${step.type})`, 'sys');
+                    startStepTimer(step.index);
+
+                    // Update move order display for this step
+                    if (step.move_order && step.move_order.length > 0) {
+                        updateStepMoveOrder(step.index, step.move_order, step.is_spreading);
+                    }
+                } else if (step.event === 'complete') {
+                    completeStepTimer(step.index, step.time_taken || 0);
+                } else {
+                    // Legacy: simple step notification without event
+                    log(`[Step ${step.index}/${step.total}] ${step.name}`, 'sys');
+                    highlightTemplateStep(step.index);
+                }
             }
 
-            // Handle template complete
+            // Handle template start event (reset timings)
+            if (resp.data && resp.data.template_start) {
+                resetStepTimings();
+                log('Template started', 'sys');
+            }
+
+            // Handle template complete event
             if (resp.data && resp.data.template_complete) {
-                log('Template complete', 'sys');
+                stopStepTimer();
+                const total = resp.data.template_complete.total_time;
+                if (total) {
+                    log(`Template complete - Total time: ${total.toFixed(1)}s`, 'sys');
+                } else {
+                    log('Template complete', 'sys');
+                }
                 clearTemplateHighlight();
                 setTemplateRunning(false);
             }
 
             // Handle template stopped (by stop command)
             if (resp.message && (resp.message.includes('STOP') || resp.message.includes('stopped'))) {
+                stopStepTimer();
                 setTemplateRunning(false);
                 clearTemplateHighlight();
+            }
+
+            // Handle loop test updates
+            if (resp.data && resp.data.loop_test) {
+                handleLoopTestUpdate(resp.data.loop_test);
             }
         }
 
@@ -1792,6 +1846,134 @@
             const speed = parseInt(document.getElementById('pvSpeed').value) * 1000;
             sendCmd('velocity_backward', { slave: parseInt(slave), speed: speed });
             log(`Slave #${parseInt(slave) + 1} Backward: ${speed} units/s`, 'com');
+        }
+
+        // Loop Test Functions
+        function startLoopTest() {
+            const slave = document.getElementById('loopTestSlaveSelect').value;
+            if (slave === '') {
+                log('Please select a slave for loop test', 'err');
+                return;
+            }
+
+            const pos1 = parseFloat(document.getElementById('loopTestPos1').value);
+            const pos2 = parseFloat(document.getElementById('loopTestPos2').value);
+            const cycles = parseInt(document.getElementById('loopTestCycles').value) || 0;
+
+            if (isNaN(pos1) || isNaN(pos2)) {
+                log('Invalid position values', 'err');
+                return;
+            }
+
+            if (pos1 === pos2) {
+                log('Position 1 and Position 2 must be different', 'err');
+                return;
+            }
+
+            // Apply PV speed first
+            applyPVSpeed();
+
+            // Start loop test
+            loopTestRunning = true;
+            loopTestCurrentCycle = 0;
+            loopTestTargetCycles = cycles;
+            loopTestDirection = 'forward';
+
+            // Update UI
+            document.getElementById('loopTestStartBtn').disabled = true;
+            document.getElementById('loopTestStopBtn').disabled = false;
+            document.getElementById('loopTestStatus').style.display = 'block';
+            updateLoopTestStatus('Running', 0);
+
+            // Send command to backend
+            sendCmd('loop_test_start', {
+                slave: parseInt(slave),
+                pos1: pos1,
+                pos2: pos2,
+                cycles: cycles
+            });
+
+            log(`Loop Test started: Slave #${parseInt(slave) + 1}, ${pos1}m ↔ ${pos2}m, ${cycles === 0 ? 'infinite' : cycles} cycles`, 'com');
+        }
+
+        function stopLoopTest() {
+            loopTestRunning = false;
+
+            // Send stop command
+            sendCmd('loop_test_stop');
+            sendCmd('stop');  // Also send general stop
+
+            // Update UI
+            updateLoopTestStartBtn();
+            document.getElementById('loopTestStopBtn').disabled = true;
+            updateLoopTestStatus('Stopped', loopTestCurrentCycle);
+
+            log('Loop Test stopped', 'wrn');
+        }
+
+        function updateLoopTestStartBtn() {
+            const slave = document.getElementById('loopTestSlaveSelect').value;
+            const startBtn = document.getElementById('loopTestStartBtn');
+            // Enable start button only if slave is selected and not currently running
+            startBtn.disabled = (slave === '' || loopTestRunning);
+        }
+
+        function updateLoopTestStatus(status, cycle) {
+            const statusText = document.getElementById('loopTestStatusText');
+            const cycleCount = document.getElementById('loopTestCycleCount');
+
+            if (statusText) {
+                statusText.textContent = status;
+                statusText.style.color = status === 'Running' ? 'var(--accent-green)' :
+                                         status === 'Stopped' ? 'var(--accent-red)' : 'var(--text-secondary)';
+            }
+            if (cycleCount) {
+                const targetText = loopTestTargetCycles === 0 ? '∞' : loopTestTargetCycles;
+                cycleCount.textContent = `Cycle: ${cycle}/${targetText}`;
+            }
+        }
+
+        // Handle loop test updates from backend
+        function handleLoopTestUpdate(data) {
+            const status = data.status;
+
+            // Show status display
+            const statusDiv = document.getElementById('loopTestStatus');
+            if (statusDiv) statusDiv.style.display = 'block';
+
+            if (status === 'started') {
+                loopTestRunning = true;
+                loopTestCurrentCycle = 0;
+                loopTestTargetCycles = data.cycles || 0;
+                updateLoopTestStartBtn();
+                document.getElementById('loopTestStopBtn').disabled = false;
+                updateLoopTestStatus('Starting', 0);
+            }
+            else if (status === 'moving_forward') {
+                loopTestCurrentCycle = data.current_cycle || loopTestCurrentCycle;
+                loopTestDirection = 'forward';
+                updateLoopTestStatus('Forward →', loopTestCurrentCycle);
+            }
+            else if (status === 'moving_backward') {
+                loopTestCurrentCycle = data.current_cycle || loopTestCurrentCycle;
+                loopTestDirection = 'backward';
+                updateLoopTestStatus('← Backward', loopTestCurrentCycle);
+            }
+            else if (status === 'stopped') {
+                loopTestRunning = false;
+                updateLoopTestStartBtn();
+                document.getElementById('loopTestStopBtn').disabled = true;
+                updateLoopTestStatus('Stopped', loopTestCurrentCycle);
+                log(`Loop Test stopped at cycle ${loopTestCurrentCycle}`, 'sys');
+            }
+            else if (status === 'completed') {
+                loopTestRunning = false;
+                loopTestCurrentCycle = data.total_cycles || loopTestCurrentCycle;
+                updateLoopTestStartBtn();
+                document.getElementById('loopTestStopBtn').disabled = true;
+                updateLoopTestStatus('Complete', loopTestCurrentCycle);
+                log(`Loop Test complete: ${loopTestCurrentCycle} cycles`, 'sys');
+            }
         }
 
         // Homing functions
@@ -1965,6 +2147,7 @@
                 // Resolve position reference
                 let positionDisplay = '—';
                 const posRef = step.position;
+                const posRotRef = step.position_rotation;
 
                 if (posRef && positions && positions[posRef]) {
                     positionDisplay = `[${positions[posRef].join(', ')}]`;
@@ -1972,23 +2155,169 @@
                     positionDisplay = posRef;
                 }
 
+                // For 'all' type, show both positions
+                if (stepType === 'all' && posRotRef && positions && positions[posRotRef]) {
+                    positionDisplay += ` / [${positions[posRotRef].join(', ')}]`;
+                } else if (stepType === 'all' && posRotRef) {
+                    positionDisplay += ` / ${posRotRef}`;
+                }
+
                 const typeColor = stepType === 'movement' ? 'var(--accent-green)' :
                                   stepType === 'rotation' ? 'var(--accent-blue)' :
                                   stepType === 'home' ? 'var(--accent-red)' : 'var(--text-gold)';
                 const typeLabel = stepType.charAt(0).toUpperCase() + stepType.slice(1);
 
+                // Get timing info if available
+                const timing = stepTimings[i + 1];
+                let timeDisplay = '—';
+                let timeColor = 'var(--text-secondary)';
+                if (timing && timing.elapsed !== undefined) {
+                    timeDisplay = timing.elapsed.toFixed(1) + 's';
+                    timeColor = 'var(--accent-green)';
+                }
+
                 html += `<tr id="step-row-${i + 1}">
                     <td style="padding: 6px 4px;">${i + 1}</td>
                     <td style="padding: 6px 4px;">${step.name || 'Step'}</td>
                     <td style="padding: 6px 4px; color: ${typeColor};">${typeLabel}</td>
-                    <td style="padding: 6px 4px; font-size: 0.7rem;">${positionDisplay}</td>
+                    <td style="padding: 6px 4px;">${positionDisplay}</td>
                     <td style="padding: 6px 4px;">${step.delay || 0}s</td>
-                    <td style="padding: 6px 4px;" id="step-time-${i + 1}">—</td>
+                    <td style="padding: 6px 4px; color: ${timeColor}; font-weight: bold;" id="step-time-${i + 1}">${timeDisplay}</td>
+                    <td style="padding: 6px 4px; color: var(--text-secondary);" id="step-order-${i + 1}">—</td>
                 </tr>`;
             });
             tbody.innerHTML = html;
 
             log(`Template: ${template.name} (${template.steps.length} steps)`, 'sys');
+        }
+
+        // Start tracking time for a step
+        function startStepTimer(stepIndex) {
+            // Stop previous timer if any
+            stopStepTimer();
+
+            currentStepIndex = stepIndex;
+            stepTimings[stepIndex] = { startTime: Date.now(), elapsed: 0 };
+
+            // Highlight current step row
+            const row = document.getElementById(`step-row-${stepIndex}`);
+            if (row) {
+                row.style.background = 'rgba(88, 166, 255, 0.15)';
+                row.style.borderLeft = '3px solid var(--accent-blue)';
+            }
+
+            // Update time cell to show running
+            const timeCell = document.getElementById(`step-time-${stepIndex}`);
+            if (timeCell) {
+                timeCell.style.color = 'var(--accent-blue)';
+                timeCell.textContent = '0.0s';
+            }
+
+            // Start real-time timer update
+            stepTimerInterval = setInterval(() => {
+                if (stepTimings[stepIndex]) {
+                    const elapsed = (Date.now() - stepTimings[stepIndex].startTime) / 1000;
+                    stepTimings[stepIndex].elapsed = elapsed;
+
+                    const timeCell = document.getElementById(`step-time-${stepIndex}`);
+                    if (timeCell) {
+                        timeCell.textContent = elapsed.toFixed(1) + 's';
+                    }
+                }
+            }, 100);  // Update every 100ms
+        }
+
+        // Stop the current step timer
+        function stopStepTimer() {
+            if (stepTimerInterval) {
+                clearInterval(stepTimerInterval);
+                stepTimerInterval = null;
+            }
+
+            if (currentStepIndex) {
+                // Remove highlight from previous step
+                const row = document.getElementById(`step-row-${currentStepIndex}`);
+                if (row) {
+                    row.style.background = '';
+                    row.style.borderLeft = '';
+                }
+            }
+        }
+
+        // Complete a step and record final time
+        function completeStepTimer(stepIndex, totalTime) {
+            stopStepTimer();
+
+            if (stepTimings[stepIndex]) {
+                stepTimings[stepIndex].elapsed = totalTime;
+            } else {
+                stepTimings[stepIndex] = { elapsed: totalTime };
+            }
+
+            // Update time cell with final value
+            const timeCell = document.getElementById(`step-time-${stepIndex}`);
+            if (timeCell) {
+                timeCell.style.color = 'var(--accent-green)';
+                timeCell.textContent = totalTime.toFixed(1) + 's';
+            }
+
+            // Mark row as completed
+            const row = document.getElementById(`step-row-${stepIndex}`);
+            if (row) {
+                row.style.background = 'rgba(63, 185, 80, 0.1)';
+                row.style.borderLeft = '3px solid var(--accent-green)';
+            }
+
+            currentStepIndex = null;
+        }
+
+        // Reset all step timings (when starting new template run)
+        function resetStepTimings() {
+            stopStepTimer();
+            stepTimings = {};
+            currentStepIndex = null;
+
+            // Reset all row styles and time/order displays
+            const tbody = document.getElementById('templateTableBody');
+            if (tbody) {
+                const rows = tbody.querySelectorAll('tr[id^="step-row-"]');
+                rows.forEach(row => {
+                    row.style.background = '';
+                    row.style.borderLeft = '';
+                });
+
+                const timeCells = tbody.querySelectorAll('td[id^="step-time-"]');
+                timeCells.forEach(cell => {
+                    cell.style.color = 'var(--text-secondary)';
+                    cell.textContent = '—';
+                });
+
+                // Reset order cells
+                const orderCells = tbody.querySelectorAll('td[id^="step-order-"]');
+                orderCells.forEach(cell => {
+                    cell.style.color = 'var(--text-secondary)';
+                    cell.textContent = '—';
+                });
+            }
+        }
+
+        // Update move order display for a step
+        function updateStepMoveOrder(stepIndex, moveOrder, isSpreading) {
+            const orderCell = document.getElementById(`step-order-${stepIndex}`);
+            if (!orderCell) return;
+
+            if (!moveOrder || moveOrder.length === 0) {
+                orderCell.textContent = '—';
+                orderCell.style.color = 'var(--text-secondary)';
+                return;
+            }
+
+            // Format: "1→2→3→4" with spreading/converging indicator
+            const orderStr = moveOrder.map(s => s + 1).join('→');
+            const indicator = isSpreading ? '↔' : '→←';
+
+            orderCell.innerHTML = `<span style="color: var(--accent-blue);">${indicator}</span> ${orderStr}`;
+            orderCell.style.color = 'var(--text-primary)';
         }
 
         function applyStepsConfig() {
@@ -2003,6 +2332,7 @@
                 log('Please load a config file first', 'err');
                 return;
             }
+            resetStepTimings();  // Reset timings before starting
             sendCmd('template', { config: loadedConfig });
             log(`Running template: ${loadedConfig.template?.name || 'Unnamed'} (single run)...`, 'com');
             setTemplateRunning(true);
@@ -2013,6 +2343,7 @@
                 log('Please load a config file first', 'err');
                 return;
             }
+            resetStepTimings();  // Reset timings before starting
             sendCmd('template_loop', { config: loadedConfig });
             log(`Running template: ${loadedConfig.template?.name || 'Unnamed'} (LOOP mode)...`, 'com');
             setTemplateRunning(true);
@@ -2255,39 +2586,21 @@
             }
         }
 
-        // Logging - writes to both main log and PP log
+        // Logging
         function log(msg, type = 'sys') {
-            const time = new Date().toLocaleTimeString();
-            const entryHtml = `<span class="log-ts">${time}</span><span class="log-${type}">${msg}</span>`;
-
-            // Main log window (left panel)
             const logWindow = document.getElementById('log-window');
-            if (logWindow) {
-                const entry = document.createElement('div');
-                entry.className = 'log-entry';
-                entry.innerHTML = entryHtml;
-                logWindow.appendChild(entry);
-                logWindow.scrollTop = logWindow.scrollHeight;
-            }
+            if (!logWindow) return;
 
-            // PP mode log window (right panel)
-            const ppLogWindow = document.getElementById('pp-log-window');
-            if (ppLogWindow) {
-                const entry = document.createElement('div');
-                entry.className = 'log-entry';
-                entry.innerHTML = entryHtml;
-                ppLogWindow.appendChild(entry);
-                ppLogWindow.scrollTop = ppLogWindow.scrollHeight;
-            }
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-ts">${time}</span><span class="log-${type}">${msg}</span>`;
+            logWindow.appendChild(entry);
+            logWindow.scrollTop = logWindow.scrollHeight;
         }
 
         function clearLogs() {
             document.getElementById('log-window').innerHTML = '';
-        }
-
-        function clearPPLogs() {
-            const ppLogWindow = document.getElementById('pp-log-window');
-            if (ppLogWindow) ppLogWindow.innerHTML = '';
         }
 
         // Initialize

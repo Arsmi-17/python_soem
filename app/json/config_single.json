@@ -28,31 +28,31 @@
                 "name": "Home All",
                 "type": "home",
                 "position": "home_pos_M",
-                "delay": 3
+                "delay": 2.5
             },
             {
                 "name": "Move to Position 1",
                 "type": "movement",
                 "position": "pos_1",
-                "delay": 7
+                "delay": 13.5
             },
             {
                 "name": "Home All",
                 "type": "home",
                 "position": "home_pos_M",
-                "delay": 7
+                "delay": 6.2
             },
             {
                 "name": "Move to Position 1",
                 "type": "movement",
                 "position": "pos_2",
-                "delay": 7
+                "delay": 9.3
             },
             {
                 "name": "Home All",
                 "type": "home",
                 "position": "home_pos_M",
-                "delay": 3
+                "delay": 5.7
             }
         ]
     }

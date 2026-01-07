@@ -266,6 +266,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 motor.send_command(MotorProcess.CMD_RESCAN)
             elif cmd == 'recover':
                 motor.send_command(MotorProcess.CMD_RECOVER)
+            elif cmd == 'loop_test_start':
+                motor.send_command('loop_test_start', cmd_data)
+            elif cmd == 'loop_test_stop':
+                motor.send_command('loop_test_stop', cmd_data)
             elif cmd == 'clear_event':
                 motor.clear_event()
             elif cmd == 'quit':
@@ -310,8 +314,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 print("[QUIT] Exiting...")
                 os._exit(0)  # Force exit the entire process
 
-            # Check for response (increase timeout for file operations)
-            timeout = 2.0 if cmd in ['load_config', 'list_configs'] else 0.5
+            # Check for response (increase timeout for file operations and loop test)
+            timeout = 2.0 if cmd in ['load_config', 'list_configs', 'loop_test_start'] else 0.5
             resp = motor.get_response(timeout=timeout)
             if resp:
                 print(f"[web_server] Response for {cmd}: {resp.get('message', 'no message')}")
