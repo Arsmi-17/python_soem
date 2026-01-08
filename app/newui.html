@@ -142,10 +142,16 @@
 
         .container {
             display: grid;
-            grid-template-columns: 280px 1fr;
+            grid-template-columns: 30% 70%;
             gap: 15px;
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
+        }
+
+        .left-column {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
         }
 
         .section {
@@ -404,6 +410,38 @@
             color: var(--accent-red);
         }
 
+        /* Slave Devices Block */
+        .slave-devices-block {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-ui);
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .slave-devices-block .section-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-blue);
+            border-bottom: 1px solid var(--border-ui);
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+        }
+
+        .slave-devices-block table {
+            width: 100%;
+            font-size: 0.85rem;
+        }
+
+        .slave-devices-block th,
+        .slave-devices-block td {
+            padding: 10px 8px;
+        }
+
+        .slave-devices-block th {
+            font-size: 0.8rem;
+        }
+
         select, input[type="text"], input[type="number"] {
             width: 100%;
             padding: 6px 10px;
@@ -580,6 +618,17 @@
             .container {
                 grid-template-columns: 1fr;
             }
+            .left-column {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 15px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .left-column {
+                grid-template-columns: 1fr;
+            }
         }
 
         /* Template Section Styles */
@@ -751,69 +800,75 @@
     </div>
 
     <div class="container">
-        <!-- Real-time Status (Left 25%) -->
-        <div class="section">
-            <h2 class="section-title">
-                Real-time Status
-                <div class="status-controls">
-                    <button class="btn btn-reset" id="resetBtn" onclick="sendCmd('reset')">Reset</button>
-                    <button class="btn btn-enable" id="enableBtn" onclick="sendCmd('enable')">Enable</button>
-                    <button class="btn btn-disable" id="disableBtn" onclick="sendCmd('disable')">Disable</button>
-                    <button class="btn terminate-btn" onclick="terminateProgram()">Terminate</button>
+        <!-- Left Column (30%) -->
+        <div class="left-column">
+            <!-- Slave Devices Block -->
+            <div class="slave-devices-block">
+                <h2 class="section-title">Slave Devices</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 30px;"></th>
+                            <th>ID</th>
+                            <th>Position (m)</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positionTable">
+                        <tr>
+                            <td><span class="indicator indicator-disabled"></span></td>
+                            <td>#01</td>
+                            <td>0.0000</td>
+                            <td>--</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Real-time Status -->
+            <div class="section">
+                <h2 class="section-title">
+                    Real-time Status
+                    <div class="status-controls">
+                        <button class="btn btn-reset" id="resetBtn" onclick="sendCmd('reset')">Reset</button>
+                        <button class="btn btn-enable" id="enableBtn" onclick="sendCmd('enable')">Enable</button>
+                        <button class="btn btn-disable" id="disableBtn" onclick="sendCmd('disable')">Disable</button>
+                        <button class="btn terminate-btn" onclick="terminateProgram()">Terminate</button>
+                    </div>
+                </h2>
+
+                <div class="status-item">
+                    <span class="status-label">EtherCAT Status:</span>
+                    <span class="status-value status-connected" id="ethercatStatus">Disconnected</span>
                 </div>
-            </h2>
+                <div class="status-item">
+                    <span class="status-label">Network Interface:</span>
+                    <span class="status-value" id="interfaceDisplay">Not connected</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Operation Mode:</span>
+                    <span class="status-value" id="modeLabel">--</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Slave Count:</span>
+                    <span class="status-value" id="slaveCount">0</span>
+                </div>
 
-            <div class="status-item">
-                <span class="status-label">EtherCAT Status:</span>
-                <span class="status-value status-connected" id="ethercatStatus">Disconnected</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Network Interface:</span>
-                <span class="status-value" id="interfaceDisplay">Not connected</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Operation Mode:</span>
-                <span class="status-value" id="modeLabel">--</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Slave Count:</span>
-                <span class="status-value" id="slaveCount">0</span>
-            </div>
+                <!-- Homing Block -->
+                <div class="homing-block">
+                    <h4>Homing Control</h4>
+                    <select id="homeSlaveSelect" onchange="updateButtonStates()">
+                        <option value="">-- Select Slave --</option>
+                    </select>
+                    <button class="btn btn-gold" onclick="setHome()" style="width: 100%; margin: 8px 0;" id="setHomeBtn" disabled>Set Home for Selected</button>
+                    <button class="btn btn-gold" onclick="setHomeAll()" style="width: 100%;" id="setHomeAllBtn" disabled>Set Home All Slaves</button>
+                </div>
 
-            <!-- Homing Block -->
-            <div class="homing-block">
-                <h4>Homing Control</h4>
-                <select id="homeSlaveSelect" onchange="updateButtonStates()">
-                    <option value="">-- Select Slave --</option>
-                </select>
-                <button class="btn btn-gold" onclick="setHome()" style="width: 100%; margin: 8px 0;" id="setHomeBtn" disabled>Set Home for Selected</button>
-                <button class="btn btn-gold" onclick="setHomeAll()" style="width: 100%;" id="setHomeAllBtn" disabled>Set Home All Slaves</button>
+                <!-- System Log -->
+                <h3 style="color: var(--text-secondary); font-size: 0.8rem; margin: 20px 0 10px; text-transform: uppercase;">System Log</h3>
+                <div id="log-window"></div>
+                <button class="btn btn-outline" onclick="clearLogs()" style="width: 100%; margin-top: 10px;">Clear Logs</button>
             </div>
-
-            <h3 style="color: var(--text-secondary); font-size: 0.8rem; margin: 15px 0 10px; text-transform: uppercase;">Slave Devices</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 30px;"></th>
-                        <th>ID</th>
-                        <th>Position (m)</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="positionTable">
-                    <tr>
-                        <td><span class="indicator indicator-disabled"></span></td>
-                        <td>#01</td>
-                        <td>0.0000</td>
-                        <td>--</td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <!-- System Log -->
-            <h3 style="color: var(--text-secondary); font-size: 0.8rem; margin: 20px 0 10px; text-transform: uppercase;">System Log</h3>
-            <div id="log-window"></div>
-            <button class="btn btn-outline" onclick="clearLogs()" style="width: 100%; margin-top: 10px;">Clear Logs</button>
         </div>
 
         <!-- Operation Section (Right 75%) -->
@@ -1870,6 +1925,10 @@
                 return;
             }
 
+            // Get PV speed from the speed block
+            const speedUnit = parseInt(document.getElementById('pvSpeed').value) || 50;
+            const velocity = speedUnit * 1000;
+
             // Apply PV speed first
             applyPVSpeed();
 
@@ -1885,12 +1944,13 @@
             document.getElementById('loopTestStatus').style.display = 'block';
             updateLoopTestStatus('Running', 0);
 
-            // Send command to backend
+            // Send command to backend with speed
             sendCmd('loop_test_start', {
                 slave: parseInt(slave),
                 pos1: pos1,
                 pos2: pos2,
-                cycles: cycles
+                cycles: cycles,
+                speed: velocity
             });
 
             log(`Loop Test started: Slave #${parseInt(slave) + 1}, ${pos1}m ↔ ${pos2}m, ${cycles === 0 ? 'infinite' : cycles} cycles`, 'com');

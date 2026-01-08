@@ -644,7 +644,7 @@ class MotorProcess:
             config_path = os_module.path.join(os_module.path.dirname(__file__), 'osc', 'rotorscope_config.json')
             default_config = {
                 "speed": {"velocity": 80000, "acceleration": 40000, "deceleration": 40000},
-                "start_value_map": {"0": 0, "1": 0.1, "2": 0.5, "3": 1.0, "4": 1.5, "5": 2.0},
+                "start_value_map": {"0": 0, "1": 0.1, "2": 0.5, "3": 1.0, "4": 1.5, "5": 2.0, "6": 3.0},
                 "position_tolerance": 0.002,
                 "broadcast_interval": 0.05
             }
@@ -1754,6 +1754,7 @@ class MotorProcess:
                         pos1 = data.get('pos1', 0)
                         pos2 = data.get('pos2', 0.1)
                         cycles = data.get('cycles', 5)  # 0 = infinite
+                        speed = data.get('speed', ec._velocity)  # Use UI speed or default
 
                         if slave is None:
                             send_response(False, "No slave specified for loop test")
@@ -1764,7 +1765,7 @@ class MotorProcess:
                             send_response(False, f"Invalid slave index: {slave}")
                             continue
 
-                        print(f"\n[LOOP TEST] Starting: Slave {slave}, Pos1={pos1}m, Pos2={pos2}m, Cycles={cycles}")
+                        print(f"\n[LOOP TEST] Starting: Slave {slave}, Pos1={pos1}m, Pos2={pos2}m, Cycles={cycles}, Speed={speed}")
 
                         # Clear stop flag for this operation
                         shared_stop.value = 0
@@ -1783,7 +1784,7 @@ class MotorProcess:
                         })
 
                         # Run loop test in a thread to not block command processing
-                        def run_loop_test(slave_idx, p1, p2, num_cycles):
+                        def run_loop_test(slave_idx, p1, p2, num_cycles, vel_speed):
                             try:
                                 max_cycles = 999999 if num_cycles == 0 else num_cycles
                                 tolerance = 0.002  # 2mm tolerance
@@ -1802,7 +1803,7 @@ class MotorProcess:
                                         break
 
                                     # Move forward: pos1 -> pos2
-                                    print(f"  [LOOP TEST] Cycle {cycle + 1}: Moving forward to {p2}m")
+                                    print(f"  [LOOP TEST] Cycle {cycle + 1}: Moving forward to {p2}m at {vel_speed} units/s")
                                     send_response(True, f"Cycle {cycle + 1}: Moving forward", {
                                         'loop_test': {
                                             'status': 'moving_forward',
@@ -1811,12 +1812,12 @@ class MotorProcess:
                                         }
                                     })
 
-                                    # Calculate direction and start velocity movement
+                                    # Calculate direction and start velocity movement with specified speed
                                     current_pos = ec.read_position_meters(slave_idx)
                                     if p2 > current_pos:
-                                        ec.velocity_forward(slave_idx)
+                                        ec.velocity_forward(slave_idx, vel_speed)
                                     else:
-                                        ec.velocity_backward(slave_idx)
+                                        ec.velocity_backward(slave_idx, vel_speed)
 
                                     # Wait until reaching pos2
                                     while abs(ec.read_position_meters(slave_idx) - p2) > tolerance:
@@ -1835,7 +1836,7 @@ class MotorProcess:
                                     time.sleep(0.1)  # Small pause at target
 
                                     # Move backward: pos2 -> pos1
-                                    print(f"  [LOOP TEST] Cycle {cycle + 1}: Moving backward to {p1}m")
+                                    print(f"  [LOOP TEST] Cycle {cycle + 1}: Moving backward to {p1}m at {vel_speed} units/s")
                                     send_response(True, f"Cycle {cycle + 1}: Moving backward", {
                                         'loop_test': {
                                             'status': 'moving_backward',
@@ -1846,9 +1847,9 @@ class MotorProcess:
 
                                     current_pos = ec.read_position_meters(slave_idx)
                                     if p1 > current_pos:
-                                        ec.velocity_forward(slave_idx)
+                                        ec.velocity_forward(slave_idx, vel_speed)
                                     else:
-                                        ec.velocity_backward(slave_idx)
+                                        ec.velocity_backward(slave_idx, vel_speed)
 
                                     # Wait until reaching pos1
                                     while abs(ec.read_position_meters(slave_idx) - p1) > tolerance:
@@ -1887,10 +1888,10 @@ class MotorProcess:
                                 shared_moving.value = 0
                                 send_response(False, f"Loop test error: {e}")
 
-                        # Start the loop test thread
+                        # Start the loop test thread with speed parameter
                         loop_test_thread = threading.Thread(
                             target=run_loop_test,
-                            args=(slave, pos1, pos2, cycles),
+                            args=(slave, pos1, pos2, cycles, speed),
                             daemon=True
                         )
                         loop_test_thread.start()

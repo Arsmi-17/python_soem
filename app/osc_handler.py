@@ -42,7 +42,7 @@ def load_osc_config():
     config_path = os.path.join(os.path.dirname(__file__), 'osc', 'rotorscope_config.json')
     default_config = {
         "speed": {"velocity": 80000, "acceleration": 40000, "deceleration": 40000},
-        "start_value_map": {"0": 0, "1": 0.1, "2": 0.5, "3": 1.0, "4": 1.5, "5": 2.0},
+        "start_value_map": {"0": 0, "1": 0.1, "2": 0.5, "3": 1.0, "4": 1.5, "5": 2.0, "6": 3.0},
         "position_tolerance": 0.002,
         "broadcast_interval": 0.05
     }
@@ -77,6 +77,19 @@ class OSCHandler:
     # Position tolerance and broadcast interval
     POSITION_TOLERANCE = _config.get('position_tolerance', 0.002)
     BROADCAST_INTERVAL = _config.get('broadcast_interval', 0.05)
+
+    @classmethod
+    def reload_config(cls):
+        """Reload configuration from rotorscope_config.json"""
+        cls._config = load_osc_config()
+        cls.START_VALUE_MAP = {int(k): v for k, v in cls._config.get('start_value_map', {}).items()}
+        cls._speed = cls._config.get('speed', {})
+        cls.MOVE_SPEED = cls._speed.get('velocity', 80000)
+        cls.MOVE_ACCEL = cls._speed.get('acceleration', cls.MOVE_SPEED // 2)
+        cls.MOVE_DECEL = cls._speed.get('deceleration', cls.MOVE_SPEED // 2)
+        cls.POSITION_TOLERANCE = cls._config.get('position_tolerance', 0.002)
+        cls.BROADCAST_INTERVAL = cls._config.get('broadcast_interval', 0.05)
+        print(f"[OSC Handler] Config reloaded. Value map: {cls.START_VALUE_MAP}")
 
     def __init__(self, motor_process=None, on_log=None):
         """
@@ -125,6 +138,7 @@ class OSCHandler:
         self.register_handler('/enable', self._handle_enable)
         self.register_handler('/disable', self._handle_disable)
         self.register_handler('/reset', self._handle_reset)
+        self.register_handler('/reload', self._handle_reload)
 
     def register_handler(self, address, handler):
         """
@@ -441,6 +455,12 @@ class OSCHandler:
         self._log('recv', f"/reset -> Resetting faults")
         self._send_command('reset')
 
+    def _handle_reload(self, address, args):
+        """Handle /reload command - reload config from rotorscope_config.json."""
+        self._log('recv', f"/reload -> Reloading configuration")
+        OSCHandler.reload_config()
+        self._log('info', f"New value map: {self.START_VALUE_MAP}")
+
     # =========================================================================
     # Server Methods
     # =========================================================================
@@ -505,6 +525,9 @@ class OSCHandler:
         if self._running:
             self._log('warn', "OSC Handler already running")
             return
+
+        # Reload config on start to pick up any changes
+        OSCHandler.reload_config()
 
         self.ip = ip
         self.port = port

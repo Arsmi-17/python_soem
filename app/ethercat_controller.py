@@ -287,15 +287,41 @@ class EtherCATController:
             
             # Map PDO
             self.master.config_map()
-            
+
             for i in range(self.slaves_count):
                 slave = self.master.slaves[i]
                 print(f"Slave {i}: Output={len(slave.output)}B, Input={len(slave.input)}B")
-            
-            # Transition to SAFE_OP
+
+            # Give slaves time to stabilize before state transition
+            print("\nWaiting for slaves to stabilize...")
+            time.sleep(0.5)
+
+            # Transition to SAFE_OP with retry
+            print("Transitioning to SAFE_OP...")
             self.master.state = pysoem.SAFEOP_STATE
             self.master.write_state()
-            self.master.state_check(pysoem.SAFEOP_STATE, 50000)
+
+            # Check each slave's state and report errors
+            for retry in range(3):
+                try:
+                    self.master.state_check(pysoem.SAFEOP_STATE, 50000)
+                    break
+                except Exception as e:
+                    print(f"  SAFE_OP transition attempt {retry + 1} failed: {e}")
+                    # Check individual slave states
+                    for i in range(self.slaves_count):
+                        slave = self.master.slaves[i]
+                        state = slave.state
+                        al_status = slave.al_status
+                        if al_status != 0:
+                            error_name = self.get_error_name(al_status)
+                            print(f"  Slave {i} ({slave.name}): State={state}, AL Status=0x{al_status:04X} ({error_name})")
+                    if retry < 2:
+                        print(f"  Retrying in 1 second...")
+                        time.sleep(1.0)
+                        self.master.write_state()
+                    else:
+                        raise Exception(f"Failed to reach SAFE_OP state after 3 attempts")
             
             # Initial PDO exchanges
             for _ in range(10):
