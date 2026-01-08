@@ -1036,6 +1036,9 @@ class MotorProcess:
             """Wait for all specified slaves to reach their targets"""
             start_time = time.time()
             check_interval = 0.1
+            last_warning_time = {}  # Track warning time per slave
+            position_error_count = {}  # Track consecutive position errors per slave
+            max_position_error_m = 0.5  # 500mm - if error exceeds this, something is very wrong
 
             while time.time() - start_time < timeout:
                 # Check for slave disconnect
@@ -1091,11 +1094,33 @@ class MotorProcess:
                             # Get the target that was sent for this slave
                             target_pos = ec._target_position.get(idx, 0) / ec.ACTUAL_STEPS_PER_METER
                             error_m = abs(actual_pos - target_pos)
-                            if error_m > 0.002:  # 2mm tolerance
+
+                            if error_m > max_position_error_m:
+                                # Critical error - position way off, likely mechanical issue or wrong target
+                                print(f"    [CRITICAL] Slave {idx} position error: {error_m*1000:.2f}mm exceeds {max_position_error_m*1000:.0f}mm limit!")
+                                print(f"               Actual: {actual_pos:.4f}m, Target: {target_pos:.4f}m")
+                                position_error_count[idx] = position_error_count.get(idx, 0) + 1
+
+                                # After 10 consecutive critical errors, abort
+                                if position_error_count.get(idx, 0) >= 10:
+                                    print(f"    [ABORT] Slave {idx} has persistent position error - aborting template")
+                                    send_event(2, idx, 0xFFFF, f"Slave {idx}: Position error {error_m*1000:.0f}mm")
+                                    shared_stop.value = 1
+                                    return False
                                 position_ok = False
-                                print(f"    [WARNING] Slave {idx} position error: {error_m*1000:.2f}mm")
                                 break
-                    
+                            elif error_m > 0.002:  # 2mm tolerance
+                                position_ok = False
+                                # Only warn once per second per slave to avoid spam
+                                now = time.time()
+                                if now - last_warning_time.get(idx, 0) > 1.0:
+                                    print(f"    [WARNING] Slave {idx} position error: {error_m*1000:.2f}mm (target: {target_pos:.4f}m)")
+                                    last_warning_time[idx] = now
+                                break
+                            else:
+                                # Position OK - reset error counter
+                                position_error_count[idx] = 0
+
                     if position_ok:
                         return True
                     else:

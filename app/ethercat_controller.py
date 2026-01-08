@@ -251,33 +251,38 @@ class EtherCATController:
 
                     # Try to increase watchdog timeout (Pr0.20 / 0x2020 on Panasonic)
                     # Er81b occurs when PDO is not received within watchdog time
-                    # Default is often 10-20ms, try to increase to 50ms
                     try:
                         # 0x2020 = Pr0.20 (Communication timeout)
-                        # Value is typically in ms or 0.1ms units depending on drive
-                        slave.sdo_write(0x2020, 0x00, (100).to_bytes(2, 'little'))  # 100 = 10ms or 100ms depending on drive
+                        slave.sdo_write(0x2020, 0x00, (100).to_bytes(2, 'little'))
                         print(f"  Communication timeout (0x2020): 100")
-                    except:
-                        pass
-
-                    # Also try 0x6007 (Abort connection option code) - standard CoE
-                    try:
-                        # Some drives use this for watchdog behavior
-                        # 0 = no action, 1 = fault on connection loss
-                        current = slave.sdo_read(0x6007, 0x00)
-                        print(f"  Abort connection option (0x6007): {int.from_bytes(current, 'little')}")
                     except:
                         pass
 
                     # Try SM watchdog (0x10F1 - standard EtherCAT)
                     try:
-                        # SM watchdog divider and time
-                        slave.sdo_write(0x10F1, 0x01, (2500).to_bytes(2, 'little'))  # Watchdog divider
-                        slave.sdo_write(0x10F1, 0x02, (1000).to_bytes(2, 'little'))  # Watchdog time (ms * 10)
+                        slave.sdo_write(0x10F1, 0x01, (2500).to_bytes(2, 'little'))
+                        slave.sdo_write(0x10F1, 0x02, (1000).to_bytes(2, 'little'))
                         print(f"  SM Watchdog configured: divider=2500, time=1000")
                     except:
                         pass
-                
+
+                # PP/PV mode watchdog - more relaxed since drive handles trajectory
+                if self.mode in [self.MODE_PP, self.MODE_PV]:
+                    try:
+                        # Increase communication timeout for PP/PV modes
+                        slave.sdo_write(0x2020, 0x00, (500).to_bytes(2, 'little'))  # 50ms or 500ms depending on drive
+                        print(f"  PP/PV Communication timeout (0x2020): 500 (extended)")
+                    except:
+                        pass
+
+                    # Try SM watchdog with longer timeout
+                    try:
+                        slave.sdo_write(0x10F1, 0x01, (2500).to_bytes(2, 'little'))  # Watchdog divider
+                        slave.sdo_write(0x10F1, 0x02, (5000).to_bytes(2, 'little'))  # Watchdog time 500ms
+                        print(f"  PP/PV SM Watchdog: divider=2500, time=5000 (extended)")
+                    except:
+                        pass
+
                 # Velocity/acceleration
                 slave.sdo_write(0x6081, 0x00, self._velocity.to_bytes(4, 'little', signed=False))
                 slave.sdo_write(0x607F, 0x00, self._velocity.to_bytes(4, 'little', signed=False))
@@ -469,12 +474,23 @@ class EtherCATController:
         except Exception as e:
             print(f"[PDO] Windows priority setup warning: {e}")
 
-        cycle_time_sec = self.CYCLE_TIME_US / 1000000.0
-        max_allowed_cycle_ms = 5.0  # Watchdog is typically 10-20ms, warn at 5ms
+        # Mode-specific timing settings
+        # CSP mode needs tight 1ms timing, PP/PV modes can be more relaxed
+        if self.mode == self.MODE_CSP:
+            cycle_time_sec = self.CYCLE_TIME_US / 1000000.0  # 1ms for CSP
+            max_allowed_cycle_ms = 5.0  # Warn at 5ms
+            watchdog_threshold_ms = 8.0  # Critical at 8ms
+            print(f"[PDO] CSP mode: Using 1ms cycle time, strict timing")
+        else:
+            # PP and PV modes - drive handles trajectory, we just need status updates
+            cycle_time_sec = 0.005  # 5ms cycle is fine for PP/PV
+            max_allowed_cycle_ms = 15.0  # More relaxed warning threshold
+            watchdog_threshold_ms = 20.0  # More relaxed critical threshold
+            print(f"[PDO] PP/PV mode: Using 5ms cycle time, relaxed timing")
+
         late_cycle_count = 0
         last_late_warning = 0
         consecutive_late_cycles = 0  # Track consecutive late cycles for recovery trigger
-        watchdog_threshold_ms = 8.0  # If gap exceeds this, we're in danger of Er81b
 
         try:
             last_cycle_end = time.perf_counter()
@@ -495,20 +511,25 @@ class EtherCATController:
                     consecutive_late_cycles += 1
                     now = time.time()
 
-                    # Only warn every 10 seconds to avoid spam
-                    if now - last_late_warning > 10.0:
+                    # Warning frequency depends on mode (less spam for PP/PV)
+                    warn_interval = 10.0 if self.mode == self.MODE_CSP else 30.0
+
+                    # Only warn periodically to avoid spam
+                    if now - last_late_warning > warn_interval:
                         print(f"[PDO WARNING] Timing issue: {late_cycle_count} late cycles, last gap: {cycle_gap_ms:.1f}ms")
                         last_late_warning = now
 
                     # Critical: If gap is dangerously close to watchdog timeout
                     if cycle_gap_ms > watchdog_threshold_ms:
-                        print(f"[PDO CRITICAL] Gap {cycle_gap_ms:.1f}ms approaching watchdog timeout!")
+                        # Only print critical for CSP mode, PP/PV can tolerate more
+                        if self.mode == self.MODE_CSP:
+                            print(f"[PDO CRITICAL] Gap {cycle_gap_ms:.1f}ms approaching watchdog timeout!")
 
-                    # Only trigger recovery after 20+ consecutive late cycles (indicates sustained problem)
-                    # AND gap is critically high
-                    if consecutive_late_cycles >= 20 and cycle_gap_ms > watchdog_threshold_ms and self._communication_error_callback:
+                    # Only trigger recovery after many consecutive late cycles
+                    # PP/PV modes need more tolerance
+                    recovery_threshold = 20 if self.mode == self.MODE_CSP else 50
+                    if consecutive_late_cycles >= recovery_threshold and cycle_gap_ms > watchdog_threshold_ms and self._communication_error_callback:
                         print(f"[PDO CRITICAL] {consecutive_late_cycles} consecutive late cycles - triggering recovery!")
-                        # Reset counter to avoid repeated callbacks
                         consecutive_late_cycles = 0
                         threading.Thread(
                             target=self._communication_error_callback,
