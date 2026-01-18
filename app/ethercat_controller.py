@@ -1139,16 +1139,16 @@ class EtherCATController:
                     # Set NEW_SETPOINT + CHANGE_SET_IMMEDIATELY bits
                     # CHANGE_SET_IMMEDIATELY allows smooth transition to new target
                     self._control_word[idx] = self.CONTROL_ENABLE_OP | self.CONTROL_NEW_SETPOINT | self.CONTROL_CHANGE_SET_IMMEDIATELY
+                    print(f"        Control word set: 0x{self._control_word[idx]:04X}")
 
             if trigger_immediate:
-                # Wait for setpoint acknowledge (check bit 12 of status word)
-                # Use shorter wait and rely on drive's internal acknowledgment
-                time.sleep(0.002)
-                # Keep NEW_SETPOINT high - drive will clear setpoint_acknowledge when done
-                # Only clear after drive acknowledges (status bit 12 goes high then low)
+                # Wait for PDO cycle to send the command (PP mode runs at 5ms cycle)
+                # Need at least 2 PDO cycles for reliable transmission
+                time.sleep(0.015)
+                # Clear NEW_SETPOINT bit - drive should have latched the target
                 with self._pdo_lock:
-                    # Clear NEW_SETPOINT but keep CHANGE_SET_IMMEDIATELY for smooth motion
                     self._control_word[idx] = self.CONTROL_ENABLE_OP
+                    print(f"        Control word cleared: 0x{self._control_word[idx]:04X}")
         else:
             # CSP mode - master generates trajectory
             estimated_time = distance / (slave_csp_velocity * 1000) if slave_csp_velocity > 0 else 0
@@ -1178,8 +1178,9 @@ class EtherCATController:
                     if idx < self.slaves_count:
                         self._control_word[idx] = self.CONTROL_ENABLE_OP | self.CONTROL_NEW_SETPOINT | self.CONTROL_CHANGE_SET_IMMEDIATELY
 
-            # Wait for PDO cycle to send the command (minimum 1-2 cycles)
-            time.sleep(0.002)
+            # Wait for PDO cycle to send the command (PP mode runs at 5ms cycle)
+            # Need at least 2-3 PDO cycles for reliable transmission
+            time.sleep(0.015)
 
             # Clear NEW_SETPOINT bit but keep enabled
             with self._pdo_lock:
@@ -1494,7 +1495,7 @@ class EtherCATController:
         print(f"Moving slave {idx} to {meters:.4f}m (scaled={target_scaled})")
         self.move_to_position(idx, target_scaled, trigger_immediate)
 
-    def move_multiple_to_meters(self, slave_positions, simultaneous=True, slave_delay_ms=10, move_order=None):
+    def move_multiple_to_meters(self, slave_positions, simultaneous=True, slave_delay_ms=10, move_order=None, stop_check=None):
         """
         Move multiple slaves to their target positions.
 
@@ -1507,12 +1508,14 @@ class EtherCATController:
                            when simultaneous=False (default: 10ms)
             move_order: Optional list of slave indices in the order they should move.
                        Used for staggered movement to ensure correct order.
+            stop_check: Optional callable that returns True if stop was requested.
+                       Used to interrupt staggered movement when stop is clicked.
         """
         if isinstance(slave_positions, dict):
             slave_positions = list(slave_positions.items())
 
         if not slave_positions:
-            return
+            return []
 
         # Create a lookup dict for positions
         pos_lookup = {idx: meters for idx, meters in slave_positions}
@@ -1531,17 +1534,28 @@ class EtherCATController:
         else:
             # Staggered movement: trigger each slave with delay IN MOVE ORDER
             delay_sec = slave_delay_ms / 1000.0
+            print(f"    [STAGGERED MODE] slave_delay_ms={slave_delay_ms}, delay_sec={delay_sec}")
 
             # Use move_order if provided, otherwise use original order
             if move_order:
-                # Filter move_order to only include slaves that are in slave_positions
+                # Start with slaves in move_order that are in slave_positions
                 ordered_slaves = [idx for idx in move_order if idx in pos_lookup]
+                # Add any remaining slaves from slave_positions that weren't in move_order
+                remaining_slaves = [idx for idx in pos_lookup.keys() if idx not in ordered_slaves]
+                ordered_slaves.extend(remaining_slaves)
             else:
                 ordered_slaves = [idx for idx, _ in slave_positions]
 
             print(f"    [STAGGERED] Moving in order: {[s+1 for s in ordered_slaves]} with {slave_delay_ms}ms delay")
 
             for i, slave_idx in enumerate(ordered_slaves):
+                # Check for stop before starting next slave
+                if stop_check and stop_check():
+                    print(f"    [STAGGERED] Stop requested - stopping all moving slaves")
+                    for s in moving_slaves:
+                        self.stop_motion(s)
+                    return moving_slaves
+
                 if slave_idx < self.slaves_count and slave_idx in pos_lookup:
                     meters = pos_lookup[slave_idx]
                     # Set target and trigger immediately for this slave
@@ -1551,7 +1565,17 @@ class EtherCATController:
 
                     # Add delay before next slave (except for the last one)
                     if i < len(ordered_slaves) - 1:
-                        time.sleep(delay_sec)
+                        # Split delay into small chunks to check stop flag
+                        delay_remaining = delay_sec
+                        while delay_remaining > 0:
+                            if stop_check and stop_check():
+                                print(f"    [STAGGERED] Stop requested during delay - stopping all moving slaves")
+                                for s in moving_slaves:
+                                    self.stop_motion(s)
+                                return moving_slaves
+                            sleep_time = min(0.01, delay_remaining)  # Check every 10ms
+                            time.sleep(sleep_time)
+                            delay_remaining -= sleep_time
 
         return moving_slaves
     

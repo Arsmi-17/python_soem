@@ -28,6 +28,7 @@
         "loop": false,
         "loop_count": 1,
         "operation_mode": "movement",
+        "is_global": false,
         "is_simultaneous": false,
         "slave_delay_ms": 30,
         "steps": [
@@ -35,12 +36,19 @@
                 "name": "Move to Position 1",
                 "type": "movement",
                 "position": "pos_1",
+                "is_simultaneous": false,
+                "slave_delay_ms": 300,
+                "move_order": "define",
+                "move_order_list": [2, 1, 3, 0, 4],
                 "delay": 7.5
             },
             {
                 "name": "Home All",
                 "type": "home",
                 "position": "home_pos_M",
+                "is_simultaneous": false,
+                "slave_delay_ms": 200,
+                "move_order": "dynamic",
                 "delay": 3
             }
         ]

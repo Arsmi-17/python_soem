@@ -1233,7 +1233,7 @@ class MotorProcess:
                             send_event(3, -1, 0, "Auto-recovery successful! Reconnected.")
                             send_response(True, f"Auto-recovery successful! Reconnected with {ec.slaves_count} slave(s).", {
                                 'recovery_success': True,
-                                'num_slaves': ec.slaves_count
+                                'slaves_found': ec.slaves_count
                             })
                         else:
                             print("[AUTO-RECOVERY] FAILED! Could not reconnect")
@@ -1241,7 +1241,8 @@ class MotorProcess:
                             shared_num_slaves.value = 0
                             send_event(2, -1, 0x81B, "Auto-recovery failed! Manual restart required.")
                             send_response(False, "Auto-recovery FAILED! Please restart the program.", {
-                                'recovery_success': False
+                                'recovery_success': False,
+                                'error_msg': 'Could not reconnect to EtherCAT'
                             })
 
                     except Exception as e:
@@ -1250,7 +1251,8 @@ class MotorProcess:
                         traceback.print_exc()
                         send_event(2, -1, 0x81B, f"Auto-recovery exception: {e}")
                         send_response(False, f"Auto-recovery exception: {e}", {
-                            'recovery_success': False
+                            'recovery_success': False,
+                            'error_msg': str(e)
                         })
 
                     finally:
@@ -1321,18 +1323,21 @@ class MotorProcess:
                         send_response(True, "EMERGENCY STOP - All motion stopped")
                     
                     elif cmd == MotorProcess.CMD_MOVE:
+                        print(f"[MOVE] Received move command with data: {data}")
                         if data:
                             positions = data.get('positions', [])
                             slave = data.get('slave', None)
-                            
+                            print(f"[MOVE] Positions: {positions}, Slave: {slave} (type: {type(slave)})")
+
                             shared_moving.value = 1
-                            
+
                             if slave is not None and slave != '':
                                 # Move specific slave
                                 slave_idx = int(slave)
+                                print(f"[MOVE] Moving specific slave {slave_idx} to position {positions[0] if positions else 'N/A'}")
                                 if slave_idx < ec.slaves_count and len(positions) > 0:
                                     ec.move_to_meters(slave_idx, positions[0])
-                                    print(f"Moving Slave {slave_idx} to {positions[0]}m")
+                                    print(f"[MOVE] Command executed for Slave {slave_idx} to {positions[0]}m")
                             else:
                                 # Move all slaves (for template use)
                                 for i, pos in enumerate(positions):
@@ -1345,10 +1350,12 @@ class MotorProcess:
 
                     elif cmd == 'move_all_home':
                         # Move all slaves to home (0m) position
+                        print(f"[MOVE ALL HOME] Moving {ec.slaves_count} slaves to 0m")
                         shared_moving.value = 1
-                        for i in range(ec.slaves_count):
-                            ec.move_to_meters(i, 0.0)
-                        time.sleep(0.5)
+                        # Use move_multiple_to_meters for proper simultaneous triggering
+                        slave_positions = [(i, 0.0) for i in range(ec.slaves_count)]
+                        ec.move_multiple_to_meters(slave_positions, simultaneous=True)
+                        time.sleep(0.1)
                         shared_moving.value = 0
                         send_response(True, "Moving all slaves to home (0m)")
 
@@ -1540,7 +1547,7 @@ class MotorProcess:
                                 send_event(3, -1, 0, "Recovery successful! Reconnected.")
                                 send_response(True, f"Recovery successful! Reconnected with {ec.slaves_count} slave(s).", {
                                     'recovery_success': True,
-                                    'num_slaves': ec.slaves_count
+                                    'slaves_found': ec.slaves_count
                                 })
                             else:
                                 print("[MANUAL RECOVERY] FAILED! Could not reconnect")
@@ -1548,7 +1555,8 @@ class MotorProcess:
                                 shared_num_slaves.value = 0
                                 send_event(2, -1, 0x81B, "Recovery failed! Check connections.")
                                 send_response(False, "Recovery FAILED! Check connections and try again.", {
-                                    'recovery_success': False
+                                    'recovery_success': False,
+                                    'error_msg': 'Could not reconnect to EtherCAT'
                                 })
 
                         except Exception as e:
@@ -1556,7 +1564,8 @@ class MotorProcess:
                             import traceback
                             traceback.print_exc()
                             send_response(False, f"Recovery exception: {e}", {
-                                'recovery_success': False
+                                'recovery_success': False,
+                                'error_msg': str(e)
                             })
 
                         finally:
@@ -1780,6 +1789,8 @@ class MotorProcess:
                         pos2 = data.get('pos2', 0.1)
                         cycles = data.get('cycles', 5)  # 0 = infinite
                         speed = data.get('speed', ec._velocity)  # Use UI speed or default
+                        start_delay = data.get('start_delay', 0)  # Delay before moving (seconds)
+                        stop_delay = data.get('stop_delay', 0)  # Delay after reaching position (seconds)
 
                         if slave is None:
                             send_response(False, "No slave specified for loop test")
@@ -1790,7 +1801,7 @@ class MotorProcess:
                             send_response(False, f"Invalid slave index: {slave}")
                             continue
 
-                        print(f"\n[LOOP TEST] Starting: Slave {slave}, Pos1={pos1}m, Pos2={pos2}m, Cycles={cycles}, Speed={speed}")
+                        print(f"\n[LOOP TEST] Starting: Slave {slave}, Pos1={pos1}m, Pos2={pos2}m, Cycles={cycles}, Speed={speed}, StartDelay={start_delay}s, StopDelay={stop_delay}s")
 
                         # Clear stop flag for this operation
                         shared_stop.value = 0
@@ -1809,10 +1820,24 @@ class MotorProcess:
                         })
 
                         # Run loop test in a thread to not block command processing
-                        def run_loop_test(slave_idx, p1, p2, num_cycles, vel_speed):
+                        def run_loop_test(slave_idx, p1, p2, num_cycles, vel_speed, delay_start, delay_stop):
                             try:
                                 max_cycles = 999999 if num_cycles == 0 else num_cycles
                                 tolerance = 0.002  # 2mm tolerance
+
+                                # Helper function to wait with stop check (keeps PDO alive)
+                                def delay_with_stop_check(delay_seconds):
+                                    if delay_seconds <= 0:
+                                        return True
+                                    steps = int(delay_seconds * 100)  # Check every 10ms to keep PDO responsive
+                                    for _ in range(steps):
+                                        if shared_stop.value == 1:
+                                            return False
+                                        if ec.has_fault(slave_idx):
+                                            return False
+                                        update_shared_status()  # Keep PDO loop alive to prevent Er81b
+                                        time.sleep(0.01)
+                                    return True
 
                                 for cycle in range(max_cycles):
                                     if shared_stop.value == 1:
@@ -1826,6 +1851,19 @@ class MotorProcess:
                                         print(f"  [LOOP TEST] Fault detected: {error_name}")
                                         send_event(2, slave_idx, error_code, f"Slave {slave_idx}: {error_name}")
                                         break
+
+                                    # Start delay: wait before moving forward
+                                    if delay_start > 0:
+                                        print(f"  [LOOP TEST] Cycle {cycle + 1}: Waiting {delay_start}s before start")
+                                        send_response(True, f"Cycle {cycle + 1}: Waiting {delay_start}s", {
+                                            'loop_test': {
+                                                'status': 'start_delay',
+                                                'current_cycle': cycle + 1,
+                                                'delay': delay_start
+                                            }
+                                        })
+                                        if not delay_with_stop_check(delay_start):
+                                            break
 
                                     # Move forward: pos1 -> pos2
                                     print(f"  [LOOP TEST] Cycle {cycle + 1}: Moving forward to {p2}m at {vel_speed} units/s")
@@ -1858,7 +1896,20 @@ class MotorProcess:
                                     if shared_stop.value == 1 or ec.has_fault(slave_idx):
                                         break
 
-                                    time.sleep(0.1)  # Small pause at target
+                                    # Stop delay: wait after reaching pos2 before moving backward
+                                    if delay_stop > 0:
+                                        print(f"  [LOOP TEST] Cycle {cycle + 1}: Waiting {delay_stop}s at pos2")
+                                        send_response(True, f"Cycle {cycle + 1}: Waiting {delay_stop}s", {
+                                            'loop_test': {
+                                                'status': 'stop_delay',
+                                                'current_cycle': cycle + 1,
+                                                'delay': delay_stop
+                                            }
+                                        })
+                                        if not delay_with_stop_check(delay_stop):
+                                            break
+                                    else:
+                                        time.sleep(0.1)  # Small pause at target
 
                                     # Move backward: pos2 -> pos1
                                     print(f"  [LOOP TEST] Cycle {cycle + 1}: Moving backward to {p1}m at {vel_speed} units/s")
@@ -1913,10 +1964,10 @@ class MotorProcess:
                                 shared_moving.value = 0
                                 send_response(False, f"Loop test error: {e}")
 
-                        # Start the loop test thread with speed parameter
+                        # Start the loop test thread with speed and delay parameters
                         loop_test_thread = threading.Thread(
                             target=run_loop_test,
-                            args=(slave, pos1, pos2, cycles, speed),
+                            args=(slave, pos1, pos2, cycles, speed, start_delay, stop_delay),
                             daemon=True
                         )
                         loop_test_thread.start()
@@ -2050,11 +2101,13 @@ class MotorProcess:
                         loop_count = template.get('loop_count', 1)
 
                         # Global staggered movement settings (default: simultaneous)
-                        is_simultaneous = template.get('is_simultaneous', True)
-                        slave_delay_ms = template.get('slave_delay_ms', 10)
+                        is_global = template.get('is_global', True)  # If true, use global settings; if false, use per-step settings
+                        global_is_simultaneous = template.get('is_simultaneous', True)
+                        global_slave_delay_ms = template.get('slave_delay_ms', 10)
 
                         # Debug: Print template keys to verify parsing
                         print(f"  [DEBUG] Template keys: {list(template.keys())}")
+                        print(f"  [DEBUG] is_global: {is_global}")
                         print(f"  [DEBUG] is_simultaneous from template: {template.get('is_simultaneous', 'NOT FOUND')}")
                         print(f"  [DEBUG] slave_delay_ms from template: {template.get('slave_delay_ms', 'NOT FOUND')}")
 
@@ -2069,7 +2122,7 @@ class MotorProcess:
                         print(f"  Movement slaves: {movement_slaves}")
                         print(f"  Rotation slaves: {rotation_slaves}")
                         print(f"  Steps: {len(steps)}, Loop: {loop}, Count: {loop_count if not loop_mode else 'Infinite'}")
-                        print(f"  Simultaneous: {is_simultaneous}" + (f", Slave delay: {slave_delay_ms}ms" if not is_simultaneous else ""))
+                        print(f"  Global settings: {is_global}" + (f", Simultaneous: {global_is_simultaneous}, Slave delay: {global_slave_delay_ms}ms" if is_global else " (using per-step settings)"))
 
                         if movement_speed:
                             print(f"  Movement speed: vel={movement_speed.get('velocity')}, accel={movement_speed.get('acceleration')}")
@@ -2126,15 +2179,31 @@ class MotorProcess:
                                     delay = step.get('delay', 1.0)
                                     name = step.get('name', f'Step {step_idx + 1}')
 
+                                    # Determine is_simultaneous and slave_delay_ms for this step
+                                    if is_global:
+                                        # Use global settings
+                                        step_is_simultaneous = global_is_simultaneous
+                                        step_slave_delay_ms = global_slave_delay_ms
+                                    else:
+                                        # Use per-step settings (fallback to global if not specified)
+                                        step_is_simultaneous = step.get('is_simultaneous', global_is_simultaneous)
+                                        step_slave_delay_ms = step.get('slave_delay_ms', global_slave_delay_ms)
+
+                                    # Get move_order mode: "dynamic" (system calculated) or "define" (user provided)
+                                    step_move_order_mode = step.get('move_order', 'dynamic')  # Default to dynamic
+                                    step_move_order_list = step.get('move_order_list', [])  # User-defined order (0-indexed slave indices)
+
                                     # Get position reference
                                     pos_ref = step.get('position')
                                     pos_rot_ref = step.get('position_rotation')
-                                    
+
                                     # Resolve position from positions dict
                                     pos_values = positions.get(pos_ref, []) if pos_ref else []
                                     pos_rot_values = positions.get(pos_rot_ref, []) if pos_rot_ref else []
-                                    
+
                                     print(f"\n  [{step_idx + 1}/{len(steps)}] {name} (type: {step_type})")
+                                    print(f"    [STEP CONFIG] is_global={is_global}, step_is_simultaneous={step_is_simultaneous}, step_slave_delay_ms={step_slave_delay_ms}")
+                                    print(f"    [STEP CONFIG] move_order_mode={step_move_order_mode}, move_order_list={step_move_order_list}")
 
                                     # Track step start time
                                     step_start_time = time.time()
@@ -2188,15 +2257,25 @@ class MotorProcess:
                                                     if slave_idx not in moving_slaves:
                                                         moving_slaves.append(slave_idx)
 
-                                    # Calculate move order for movement slaves only
+                                    # Calculate or use defined move order for movement slaves
                                     move_order = []
                                     is_spreading = False
                                     move_order_details = None
-                                    if movement_slave_positions and len(movement_slave_positions) > 1:
+                                    move_order_source = 'none'
+
+                                    if step_move_order_mode == 'define' and step_move_order_list:
+                                        # Use user-defined move order
+                                        move_order = step_move_order_list
+                                        move_order_source = 'defined'
+                                        print(f"    Move order (DEFINED): {[s+1 for s in move_order]}")
+                                    elif movement_slave_positions and len(movement_slave_positions) > 1:
+                                        # Calculate dynamic move order
                                         move_order, is_spreading, move_order_details = ec.calculate_move_order(movement_slave_positions, return_details=True)
-                                        print(f"    Move order: {move_order} ({'Spreading' if is_spreading else 'Converging'})")
+                                        move_order_source = 'dynamic'
+                                        print(f"    Move order (DYNAMIC): {[s+1 for s in move_order]} ({'Spreading' if is_spreading else 'Converging'})")
                                     elif movement_slave_positions:
                                         move_order = [movement_slave_positions[0][0]]
+                                        move_order_source = 'single'
 
                                     # Send OSC notification BEFORE step starts (1-indexed)
                                     osc_send_template_step(step_idx + 1)
@@ -2210,10 +2289,11 @@ class MotorProcess:
                                             'type': step_type,
                                             'event': 'start',
                                             'move_order': move_order,
+                                            'move_order_source': move_order_source,
                                             'is_spreading': is_spreading,
                                             'moving_slaves': moving_slaves,  # All slaves moving in this step
-                                            'is_simultaneous': is_simultaneous,
-                                            'slave_delay_ms': slave_delay_ms
+                                            'is_simultaneous': step_is_simultaneous,
+                                            'slave_delay_ms': step_slave_delay_ms
                                         }
                                     }
                                     if move_order_details:
@@ -2223,19 +2303,29 @@ class MotorProcess:
                                     # Execute movement for all collected positions
                                     if slave_positions:
                                         # Debug: Print movement mode before execution
-                                        print(f"    [DEBUG] About to call move_multiple_to_meters with simultaneous={is_simultaneous}, slave_delay_ms={slave_delay_ms}")
-                                        if is_simultaneous:
+                                        print(f"    [DEBUG] About to call move_multiple_to_meters:")
+                                        print(f"           simultaneous={step_is_simultaneous} (type: {type(step_is_simultaneous)})")
+                                        print(f"           slave_delay_ms={step_slave_delay_ms} (type: {type(step_slave_delay_ms)})")
+                                        if step_is_simultaneous:
                                             print(f"    Starting SIMULTANEOUS move for {len(slave_positions)} slaves...")
                                         else:
-                                            print(f"    Starting STAGGERED move for {len(slave_positions)} slaves (delay: {slave_delay_ms}ms)...")
+                                            print(f"    Starting STAGGERED move for {len(slave_positions)} slaves (delay: {step_slave_delay_ms}ms)...")
                                             print(f"    Using move order: {[s+1 for s in move_order]}")
 
                                         # OSC notifications for each slave move (currently disabled)
                                         # for slave_idx, pos in slave_positions:
                                         #     osc_send_slave_move(slave_idx, pos)
 
-                                        # Pass move_order for staggered movement to ensure correct sequence
-                                        ec.move_multiple_to_meters(slave_positions, simultaneous=is_simultaneous, slave_delay_ms=slave_delay_ms, move_order=move_order)
+                                        # Create stop check function for staggered movement
+                                        def staggered_stop_check():
+                                            # Check shared stop flag
+                                            if shared_stop.value == 1:
+                                                return True
+                                            # Also check for priority commands (stop, disable)
+                                            return check_priority_commands()
+
+                                        # Pass move_order and stop_check for staggered movement
+                                        ec.move_multiple_to_meters(slave_positions, simultaneous=step_is_simultaneous, slave_delay_ms=step_slave_delay_ms, move_order=move_order, stop_check=staggered_stop_check)
 
                                         # Wait for all slaves to reach target
                                         print(f"    Waiting for slaves {moving_slaves} to reach target...")

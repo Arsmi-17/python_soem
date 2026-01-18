@@ -1087,7 +1087,11 @@
                                         <div class="config-label">Rot Speed:</div>
                                         <div id="cfgRotationSpeed">--</div>
                                     </div>
-                                    <div style="grid-column: span 2;">
+                                    <div>
+                                        <div class="config-label">Global:</div>
+                                        <div id="cfgIsGlobal" style="color: var(--accent-purple);">--</div>
+                                    </div>
+                                    <div>
                                         <div class="config-label">Mode:</div>
                                         <div id="cfgMovementMode" style="color: var(--accent-green);">--</div>
                                     </div>
@@ -1152,6 +1156,16 @@
                     <!-- Loop Test Block -->
                     <div class="control-block loop-test-block" id="loopTestBlock">
                         <h4>Loop Test</h4>
+                        <!-- Live Status Display -->
+                        <div id="loopTestLiveStatus" style="display: none; margin-bottom: 10px; padding: 10px; background: var(--bg-dark); border-radius: 6px; border: 1px solid var(--border-ui);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <span id="loopTestLiveAction" style="font-weight: 600; color: var(--accent-blue);">Idle</span>
+                                <span id="loopTestLiveCycle" style="font-size: 0.75rem; color: var(--text-secondary);">Cycle: 0/0</span>
+                            </div>
+                            <div id="loopTestLiveValue" style="font-size: 1.5rem; font-weight: 700; font-family: 'Courier New', monospace; color: var(--accent-green); text-align: center;">
+                                0.000
+                            </div>
+                        </div>
                         <select id="loopTestSlaveSelect" onchange="updateLoopTestStartBtn()">
                             <option value="">-- Select Slave --</option>
                         </select>
@@ -1163,6 +1177,16 @@
                             <div>
                                 <div class="config-label">Position 2 (m):</div>
                                 <input type="number" id="loopTestPos2" value="0.1" step="0.01" style="margin: 0;">
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                            <div>
+                                <div class="config-label">Start Delay (s):</div>
+                                <input type="number" id="loopTestStartDelay" value="0" min="0" step="0.1" style="margin: 0;">
+                            </div>
+                            <div>
+                                <div class="config-label">Stop Delay (s):</div>
+                                <input type="number" id="loopTestStopDelay" value="0" min="0" step="0.1" style="margin: 0;">
                             </div>
                         </div>
                         <div style="margin-bottom: 8px;">
@@ -1243,6 +1267,9 @@
         let loopTestTargetCycles = 0;
         let loopTestDirection = 'forward';  // 'forward' or 'backward'
         let loopTestCheckInterval = null;
+        let loopTestDelayTimer = null;
+        let loopTestDelayRemaining = 0;
+        let loopTestSelectedSlave = null;
 
         // Toggle UI version
         function toggleUI() {
@@ -1652,6 +1679,17 @@
                 `;
             }
             if (html) tbody.innerHTML = html;
+
+            // Update loop test live position if running and moving
+            if (loopTestRunning && loopTestSelectedSlave !== null && !loopTestDelayTimer) {
+                const slavePos = positions[loopTestSelectedSlave];
+                if (slavePos !== undefined) {
+                    const valueEl = document.getElementById('loopTestLiveValue');
+                    if (valueEl) {
+                        valueEl.textContent = slavePos.toFixed(4) + ' m';
+                    }
+                }
+            }
         }
 
         // Update slave selector
@@ -1755,6 +1793,16 @@
             // Handle loop test updates
             if (resp.data && resp.data.loop_test) {
                 handleLoopTestUpdate(resp.data.loop_test);
+            }
+
+            // Handle communication error
+            if (resp.data && resp.data.communication_error) {
+                handleCommunicationError(resp.data.error_msg, resp.data.auto_recovery);
+            }
+
+            // Handle recovery success/failure
+            if (resp.data && resp.data.recovery_success !== undefined) {
+                handleRecoveryResult(resp.data.recovery_success, resp.data.slaves_found, resp.data.error_msg);
             }
         }
 
@@ -1870,6 +1918,133 @@
             log('Moving all slaves to home position', 'com');
         }
 
+        // Communication error state
+        let communicationErrorActive = false;
+        let recoveryInProgress = false;
+
+        function handleCommunicationError(errorMsg, autoRecovery) {
+            communicationErrorActive = true;
+            recoveryInProgress = autoRecovery;
+
+            // Show error banner
+            showErrorBanner(`COMMUNICATION ERROR: ${errorMsg}`, autoRecovery ? 'Auto-recovery in progress...' : 'Manual recovery required');
+
+            // Log the error
+            log(`[COMM ERROR] ${errorMsg}`, 'err');
+            if (autoRecovery) {
+                log('[RECOVERY] Auto-recovery initiated...', 'wrn');
+            }
+
+            // Stop any running operations
+            if (isTemplateRunning) {
+                setTemplateRunning(false);
+                clearTemplateHighlight();
+                stopStepTimer();
+            }
+            if (loopTestRunning) {
+                loopTestRunning = false;
+                if (loopTestDelayTimer) {
+                    clearInterval(loopTestDelayTimer);
+                    loopTestDelayTimer = null;
+                }
+            }
+        }
+
+        function handleRecoveryResult(success, slavesFound, errorMsg) {
+            recoveryInProgress = false;
+
+            if (success) {
+                communicationErrorActive = false;
+                hideErrorBanner();
+                log(`[RECOVERY] Success! Found ${slavesFound} slaves`, 'sys');
+                // UI will update automatically from status updates
+            } else {
+                log(`[RECOVERY] FAILED: ${errorMsg || 'Unknown error'}`, 'err');
+                showErrorBanner('RECOVERY FAILED', 'Please restart the program or try manual recovery');
+            }
+        }
+
+        function showErrorBanner(title, subtitle) {
+            let banner = document.getElementById('errorBanner');
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.id = 'errorBanner';
+                banner.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+                    color: white;
+                    padding: 15px 20px;
+                    z-index: 10000;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
+                    animation: slideDown 0.3s ease-out;
+                `;
+                document.body.prepend(banner);
+
+                // Add slide animation
+                const style = document.createElement('style');
+                style.textContent = `
+                    @keyframes slideDown {
+                        from { transform: translateY(-100%); }
+                        to { transform: translateY(0); }
+                    }
+                    @keyframes pulse {
+                        0%, 100% { opacity: 1; }
+                        50% { opacity: 0.7; }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            banner.innerHTML = `
+                <div>
+                    <div style="font-weight: bold; font-size: 1.1rem;">${title}</div>
+                    <div style="font-size: 0.85rem; opacity: 0.9; animation: ${subtitle.includes('progress') ? 'pulse 1.5s infinite' : 'none'};">${subtitle}</div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="attemptManualRecovery()" style="background: white; color: #dc3545; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                        Retry Recovery
+                    </button>
+                    <button onclick="hideErrorBanner()" style="background: transparent; color: white; border: 1px solid white; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                        Dismiss
+                    </button>
+                </div>
+            `;
+            banner.style.display = 'flex';
+        }
+
+        function hideErrorBanner() {
+            const banner = document.getElementById('errorBanner');
+            if (banner) {
+                banner.style.display = 'none';
+            }
+        }
+
+        function attemptManualRecovery() {
+            if (recoveryInProgress) {
+                log('Recovery already in progress...', 'wrn');
+                return;
+            }
+            recoveryInProgress = true;
+            log('[RECOVERY] Attempting manual recovery...', 'wrn');
+            sendCmd('recover');
+
+            // Update banner
+            const banner = document.getElementById('errorBanner');
+            if (banner) {
+                const subtitle = banner.querySelector('div > div:last-child');
+                if (subtitle) {
+                    subtitle.textContent = 'Manual recovery in progress...';
+                    subtitle.style.animation = 'pulse 1.5s infinite';
+                }
+            }
+        }
+
         function emergencyStop() {
             sendCmd('stop');
             log('EMERGENCY STOP - All motion stopped!', 'err');
@@ -1914,6 +2089,8 @@
             const pos1 = parseFloat(document.getElementById('loopTestPos1').value);
             const pos2 = parseFloat(document.getElementById('loopTestPos2').value);
             const cycles = parseInt(document.getElementById('loopTestCycles').value) || 0;
+            const startDelay = parseFloat(document.getElementById('loopTestStartDelay').value) || 0;
+            const stopDelay = parseFloat(document.getElementById('loopTestStopDelay').value) || 0;
 
             if (isNaN(pos1) || isNaN(pos2)) {
                 log('Invalid position values', 'err');
@@ -1937,27 +2114,38 @@
             loopTestCurrentCycle = 0;
             loopTestTargetCycles = cycles;
             loopTestDirection = 'forward';
+            loopTestSelectedSlave = parseInt(slave);
 
             // Update UI
             document.getElementById('loopTestStartBtn').disabled = true;
             document.getElementById('loopTestStopBtn').disabled = false;
             document.getElementById('loopTestStatus').style.display = 'block';
+            document.getElementById('loopTestLiveStatus').style.display = 'block';
             updateLoopTestStatus('Running', 0);
+            updateLoopTestLiveDisplay('Starting...', '---', 0, cycles);
 
-            // Send command to backend with speed
+            // Send command to backend with speed and delays
             sendCmd('loop_test_start', {
                 slave: parseInt(slave),
                 pos1: pos1,
                 pos2: pos2,
                 cycles: cycles,
-                speed: velocity
+                speed: velocity,
+                start_delay: startDelay,
+                stop_delay: stopDelay
             });
 
-            log(`Loop Test started: Slave #${parseInt(slave) + 1}, ${pos1}m ↔ ${pos2}m, ${cycles === 0 ? 'infinite' : cycles} cycles`, 'com');
+            log(`Loop Test started: Slave #${parseInt(slave) + 1}, ${pos1}m ↔ ${pos2}m, ${cycles === 0 ? 'infinite' : cycles} cycles, delays: ${startDelay}s/${stopDelay}s`, 'com');
         }
 
         function stopLoopTest() {
             loopTestRunning = false;
+
+            // Clear delay timer
+            if (loopTestDelayTimer) {
+                clearInterval(loopTestDelayTimer);
+                loopTestDelayTimer = null;
+            }
 
             // Send stop command
             sendCmd('loop_test_stop');
@@ -1967,6 +2155,7 @@
             updateLoopTestStartBtn();
             document.getElementById('loopTestStopBtn').disabled = true;
             updateLoopTestStatus('Stopped', loopTestCurrentCycle);
+            updateLoopTestLiveDisplay('Stopped', '---', loopTestCurrentCycle, loopTestTargetCycles);
 
             log('Loop Test stopped', 'wrn');
         }
@@ -1993,37 +2182,126 @@
             }
         }
 
+        // Update loop test live display
+        function updateLoopTestLiveDisplay(action, value, cycle, totalCycles) {
+            const actionEl = document.getElementById('loopTestLiveAction');
+            const valueEl = document.getElementById('loopTestLiveValue');
+            const cycleEl = document.getElementById('loopTestLiveCycle');
+
+            if (actionEl) {
+                actionEl.textContent = action;
+                // Color based on action type
+                if (action.includes('Moving') || action.includes('Forward') || action.includes('Backward')) {
+                    actionEl.style.color = 'var(--accent-blue)';
+                    valueEl.style.color = 'var(--accent-green)';
+                } else if (action.includes('Wait')) {
+                    actionEl.style.color = 'var(--text-gold)';
+                    valueEl.style.color = 'var(--text-gold)';
+                } else if (action === 'Stopped') {
+                    actionEl.style.color = 'var(--accent-red)';
+                    valueEl.style.color = 'var(--accent-red)';
+                } else if (action === 'Complete') {
+                    actionEl.style.color = 'var(--accent-green)';
+                    valueEl.style.color = 'var(--accent-green)';
+                } else {
+                    actionEl.style.color = 'var(--text-secondary)';
+                    valueEl.style.color = 'var(--text-secondary)';
+                }
+            }
+            if (valueEl) valueEl.textContent = value;
+            if (cycleEl) {
+                const targetText = totalCycles === 0 ? '∞' : totalCycles;
+                cycleEl.textContent = `Cycle: ${cycle}/${targetText}`;
+            }
+        }
+
+        // Start delay countdown timer
+        function startDelayCountdown(totalDelay) {
+            // Clear any existing timer
+            if (loopTestDelayTimer) {
+                clearInterval(loopTestDelayTimer);
+            }
+
+            loopTestDelayRemaining = totalDelay;
+            const valueEl = document.getElementById('loopTestLiveValue');
+
+            // Update immediately
+            if (valueEl) valueEl.textContent = loopTestDelayRemaining.toFixed(1) + 's';
+
+            // Start countdown
+            loopTestDelayTimer = setInterval(() => {
+                loopTestDelayRemaining -= 0.1;
+                if (loopTestDelayRemaining < 0) loopTestDelayRemaining = 0;
+                if (valueEl) valueEl.textContent = loopTestDelayRemaining.toFixed(1) + 's';
+
+                if (loopTestDelayRemaining <= 0) {
+                    clearInterval(loopTestDelayTimer);
+                    loopTestDelayTimer = null;
+                }
+            }, 100);
+        }
+
         // Handle loop test updates from backend
         function handleLoopTestUpdate(data) {
             const status = data.status;
+            console.log('[Loop Test] Status update:', status, data);
 
             // Show status display
             const statusDiv = document.getElementById('loopTestStatus');
+            const liveStatusDiv = document.getElementById('loopTestLiveStatus');
             if (statusDiv) statusDiv.style.display = 'block';
+            if (liveStatusDiv) liveStatusDiv.style.display = 'block';
+
+            // Clear delay timer when not in delay state
+            if (status !== 'start_delay' && status !== 'stop_delay') {
+                if (loopTestDelayTimer) {
+                    clearInterval(loopTestDelayTimer);
+                    loopTestDelayTimer = null;
+                }
+            }
 
             if (status === 'started') {
                 loopTestRunning = true;
                 loopTestCurrentCycle = 0;
                 loopTestTargetCycles = data.cycles || 0;
+                loopTestSelectedSlave = data.slave;
                 updateLoopTestStartBtn();
                 document.getElementById('loopTestStopBtn').disabled = false;
                 updateLoopTestStatus('Starting', 0);
+                updateLoopTestLiveDisplay('Starting...', '---', 0, loopTestTargetCycles);
+            }
+            else if (status === 'start_delay') {
+                loopTestCurrentCycle = data.current_cycle || loopTestCurrentCycle;
+                const delay = data.delay || 0;
+                updateLoopTestStatus('Wait (start)', loopTestCurrentCycle);
+                updateLoopTestLiveDisplay('Wait (start)', delay.toFixed(1) + 's', loopTestCurrentCycle, loopTestTargetCycles);
+                startDelayCountdown(delay);
+            }
+            else if (status === 'stop_delay') {
+                loopTestCurrentCycle = data.current_cycle || loopTestCurrentCycle;
+                const delay = data.delay || 0;
+                updateLoopTestStatus('Wait (stop)', loopTestCurrentCycle);
+                updateLoopTestLiveDisplay('Wait (stop)', delay.toFixed(1) + 's', loopTestCurrentCycle, loopTestTargetCycles);
+                startDelayCountdown(delay);
             }
             else if (status === 'moving_forward') {
                 loopTestCurrentCycle = data.current_cycle || loopTestCurrentCycle;
                 loopTestDirection = 'forward';
                 updateLoopTestStatus('Forward →', loopTestCurrentCycle);
+                updateLoopTestLiveDisplay('Moving Forward →', '---', loopTestCurrentCycle, loopTestTargetCycles);
             }
             else if (status === 'moving_backward') {
                 loopTestCurrentCycle = data.current_cycle || loopTestCurrentCycle;
                 loopTestDirection = 'backward';
                 updateLoopTestStatus('← Backward', loopTestCurrentCycle);
+                updateLoopTestLiveDisplay('← Moving Backward', '---', loopTestCurrentCycle, loopTestTargetCycles);
             }
             else if (status === 'stopped') {
                 loopTestRunning = false;
                 updateLoopTestStartBtn();
                 document.getElementById('loopTestStopBtn').disabled = true;
                 updateLoopTestStatus('Stopped', loopTestCurrentCycle);
+                updateLoopTestLiveDisplay('Stopped', '---', loopTestCurrentCycle, loopTestTargetCycles);
                 log(`Loop Test stopped at cycle ${loopTestCurrentCycle}`, 'sys');
             }
             else if (status === 'completed') {
@@ -2032,6 +2310,7 @@
                 updateLoopTestStartBtn();
                 document.getElementById('loopTestStopBtn').disabled = true;
                 updateLoopTestStatus('Complete', loopTestCurrentCycle);
+                updateLoopTestLiveDisplay('Complete', '✓', loopTestCurrentCycle, loopTestTargetCycles);
                 log(`Loop Test complete: ${loopTestCurrentCycle} cycles`, 'sys');
             }
         }
@@ -2177,27 +2456,66 @@
             document.getElementById('cfgMovementSpeed').textContent = movementSpeed.velocity ? `${movementSpeed.velocity} u/s` : '--';
             document.getElementById('cfgRotationSpeed').textContent = rotationSpeed.velocity ? `${rotationSpeed.velocity} u/s` : '--';
 
-            // Movement mode
-            const isSimultaneous = slaves.simultaneous !== false;
-            document.getElementById('cfgMovementMode').textContent = isSimultaneous ? 'Simultaneous' : `Staggered (${slaves.slave_delay_ms || 0}ms delay)`;
+            // Global settings from template
+            const isGlobal = template.is_global !== false;  // Default true
+            const isSimultaneous = template.is_simultaneous !== false;  // Default true
+            const slaveDelayMs = template.slave_delay_ms || 0;
+
+            document.getElementById('cfgIsGlobal').textContent = isGlobal ? 'Yes' : 'No (per-step)';
+            document.getElementById('cfgIsGlobal').style.color = isGlobal ? 'var(--accent-green)' : 'var(--accent-purple)';
+
+            if (isGlobal) {
+                document.getElementById('cfgMovementMode').textContent = isSimultaneous ? 'Simultaneous' : `Staggered (${slaveDelayMs}ms)`;
+            } else {
+                document.getElementById('cfgMovementMode').textContent = 'Per-step';
+            }
 
             // Update template display
-            updateTemplateDisplay(template, positions);
+            updateTemplateDisplay(template, positions, isGlobal);
 
             log(`Config loaded: ${template.name || 'Unknown'}`, 'sys');
         }
 
-        function updateTemplateDisplay(template, positions) {
+        function updateTemplateDisplay(template, positions, isGlobal = true) {
             const nameEl = document.getElementById('templateName');
             const tbody = document.getElementById('templateTableBody');
+            const thead = document.querySelector('#templateTable thead tr');
+
+            // Update table header based on is_global
+            if (!isGlobal) {
+                thead.innerHTML = `
+                    <th style="width: 30px; padding: 6px 4px;">#</th>
+                    <th style="padding: 6px 4px;">Name</th>
+                    <th style="width: 70px; padding: 6px 4px;">Type</th>
+                    <th style="width: 100px; padding: 6px 4px;">Mode</th>
+                    <th style="padding: 6px 4px;">Position</th>
+                    <th style="width: 50px; padding: 6px 4px;">Delay</th>
+                    <th style="width: 60px; padding: 6px 4px;">Time</th>
+                    <th style="width: 80px; padding: 6px 4px;">Order</th>
+                `;
+            } else {
+                thead.innerHTML = `
+                    <th style="width: 30px; padding: 6px 4px;">#</th>
+                    <th style="padding: 6px 4px;">Name</th>
+                    <th style="width: 70px; padding: 6px 4px;">Type</th>
+                    <th style="padding: 6px 4px;">Position</th>
+                    <th style="width: 50px; padding: 6px 4px;">Delay</th>
+                    <th style="width: 60px; padding: 6px 4px;">Time</th>
+                    <th style="width: 80px; padding: 6px 4px;">Order</th>
+                `;
+            }
+
+            const colSpan = isGlobal ? 7 : 8;
 
             if (!template || !template.steps || template.steps.length === 0) {
                 nameEl.textContent = 'No template loaded';
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 15px;">Load a config file to see steps</td></tr>';
+                tbody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align: center; color: var(--text-secondary); padding: 15px;">Load a config file to see steps</td></tr>`;
                 return;
             }
 
             const opMode = template.operation_mode || 'both';
+            const globalSimul = template.is_simultaneous !== false;
+            const globalDelay = template.slave_delay_ms || 0;
             nameEl.innerHTML = `${template.name || 'SEQUENCE'} <span style="color: var(--text-secondary); font-size: 0.75rem;">(${opMode} | Loop: ${template.loop || false})</span>`;
 
             let html = '';
@@ -2236,10 +2554,35 @@
                     timeColor = 'var(--accent-green)';
                 }
 
+                // Mode column for per-step settings
+                let modeColumn = '';
+                if (!isGlobal) {
+                    const stepSimul = step.is_simultaneous !== undefined ? step.is_simultaneous : globalSimul;
+                    const stepDelay = step.slave_delay_ms !== undefined ? step.slave_delay_ms : globalDelay;
+                    const stepMoveOrder = step.move_order || 'dynamic';
+                    const stepMoveOrderList = step.move_order_list || [];
+
+                    let modeText = stepSimul ? 'Simul' : `Stag(${stepDelay}ms)`;
+                    let modeColor = stepSimul ? 'var(--accent-green)' : 'var(--accent-purple)';
+
+                    // Add move order info for staggered mode
+                    let orderText = '';
+                    if (!stepSimul) {
+                        if (stepMoveOrder === 'define' && stepMoveOrderList.length > 0) {
+                            orderText = ` [${stepMoveOrderList.map(s => s+1).join('→')}]`;
+                        } else {
+                            orderText = ' [auto]';
+                        }
+                    }
+
+                    modeColumn = `<td style="padding: 6px 4px; color: ${modeColor};" title="${stepMoveOrder === 'define' ? 'User-defined order' : 'Dynamic order'}">${modeText}${orderText}</td>`;
+                }
+
                 html += `<tr id="step-row-${i + 1}">
                     <td style="padding: 6px 4px;">${i + 1}</td>
                     <td style="padding: 6px 4px;">${step.name || 'Step'}</td>
                     <td style="padding: 6px 4px; color: ${typeColor};">${typeLabel}</td>
+                    ${modeColumn}
                     <td style="padding: 6px 4px;">${positionDisplay}</td>
                     <td style="padding: 6px 4px;">${step.delay || 0}s</td>
                     <td style="padding: 6px 4px; color: ${timeColor}; font-weight: bold;" id="step-time-${i + 1}">${timeDisplay}</td>

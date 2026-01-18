@@ -149,7 +149,8 @@ async def broadcast_status():
                                 resp_data.get('recovery_success') is not None or
                                 resp_data.get('config_files') or
                                 resp_data.get('config') or
-                                resp_data.get('template')
+                                resp_data.get('template') or
+                                resp_data.get('loop_test')
                             )
                             if is_async_event:
                                 print(f"[broadcast] Broadcasting async event: {resp.get('message', 'unknown')}")
@@ -463,8 +464,8 @@ async def save_config(config: dict):
 
 @app.get("/")
 async def serve_ui():
-    """Serve main UI page"""
-    ui_path = os.path.join(os.path.dirname(__file__), 'ui.html')
+    """Serve main UI page (new UI by default)"""
+    ui_path = os.path.join(os.path.dirname(__file__), 'newui.html')
     if os.path.exists(ui_path):
         return FileResponse(ui_path)
     else:
