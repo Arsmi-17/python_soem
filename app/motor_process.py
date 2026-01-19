@@ -358,6 +358,10 @@ class MotorProcess:
                 'expected': expected
             })
 
+        # Cooldown for communication error callbacks to prevent spam
+        last_comm_error_time = [0]
+        comm_error_cooldown = 5.0  # 5 seconds cooldown between error callbacks
+
         def on_communication_error(error_msg):
             """
             Callback when communication error detected (Er81b, WKC mismatch, timing critical)
@@ -368,6 +372,14 @@ class MotorProcess:
             if recovery_in_progress[0]:
                 print(f"[COMM ERROR] Recovery already in progress, ignoring: {error_msg}")
                 return
+
+            # Check cooldown to prevent rapid-fire error callbacks
+            current_time = time.time()
+            if current_time - last_comm_error_time[0] < comm_error_cooldown:
+                print(f"[COMM ERROR] Ignoring (cooldown active): {error_msg}")
+                return
+
+            last_comm_error_time[0] = current_time
 
             print(f"\n[COMMUNICATION ERROR] {error_msg}")
             print("[COMMUNICATION ERROR] Flagging for auto-recovery...")
@@ -571,6 +583,10 @@ class MotorProcess:
         def osc_send_slave_move(slave_idx, position_meters):
             """Send OSC message when slave moves: /slave_move/<slave_id>/<position>"""
             osc_send(f"/slave_move/{slave_idx}/{position_meters:.4f}")
+
+        def osc_send_movement(slave_idx, position_meters):
+            """Send OSC message when slave is moving: /movement/<slave_id> with position value"""
+            osc_send(f"/movement/{slave_idx}", float(position_meters))
 
         def osc_send_template_step(step_index):
             """Send OSC message when template step starts: /template_step with step_no as argument"""
@@ -971,13 +987,32 @@ class MotorProcess:
             shared_osc_mode.value = OSC_MODE_OFF
             print("[OSC] Stopped")
 
-        def update_shared_status():
-            """Update shared memory with current status"""
+        def update_shared_status(send_osc_movement=False):
+            """Update shared memory with current status (uses fast PDO reads, no SDO)
+
+            Args:
+                send_osc_movement: If True and OSC is enabled, send movement OSC messages for all slaves
+            """
             if ec:
                 for i in range(min(ec.slaves_count, 8)):
-                    shared_data[i] = ec.read_position_meters(i)        # [0-7]: positions
-                    shared_data[8 + i] = float(ec.read_status(i))      # [8-15]: status words
-                    shared_data[20 + i] = float(ec.read_error_code(i)) # [20-27]: error codes
+                    pos_meters = ec.read_position_meters(i)
+                    shared_data[i] = pos_meters        # [0-7]: positions (cached PDO)
+                    status_word = ec.read_status(i)
+                    shared_data[8 + i] = float(status_word)      # [8-15]: status words (cached PDO)
+
+                    # Only read error code via SDO when fault is detected (to avoid communication errors)
+                    # Fault bit is bit 3 (0x0008) of status word
+                    if status_word & 0x0008:
+                        try:
+                            error_code = ec.read_error_code(i)
+                            shared_data[20 + i] = float(error_code)  # [20-27]: error codes
+                        except:
+                            pass  # Keep previous error code if read fails
+
+                    # Send OSC movement message if enabled and requested
+                    if send_osc_movement and shared_osc_connected.value == 1:
+                        osc_send_movement(i, pos_meters)
+
                 shared_mode.value = ec.mode
                 # Update speed values [16-19]
                 shared_data[16] = float(ec._velocity)
@@ -1055,8 +1090,8 @@ class MotorProcess:
                     print("    [STOPPED] Motion interrupted during wait")
                     return False
 
-                # Update positions in shared memory
-                update_shared_status()
+                # Update positions in shared memory and send OSC movement messages
+                update_shared_status(send_osc_movement=True)
                 
                 # Check for faults
                 for idx in slave_indices:
@@ -1175,7 +1210,8 @@ class MotorProcess:
                 # Update shared status every 10ms
                 now = time.time()
                 if now - last_status_update > 0.01:
-                    update_shared_status()
+                    # Send OSC movement messages when motor is moving
+                    update_shared_status(send_osc_movement=(shared_moving.value == 1))
                     last_status_update = now
 
                 # Check for slave disconnect/reconnect
@@ -1403,24 +1439,26 @@ class MotorProcess:
                         if data:
                             slave = data.get('slave', 'all')
                             speed = data.get('speed', ec._velocity)
+                            shared_moving.value = 1  # Mark as moving for OSC
                             if slave == 'all':
                                 for i in range(ec.slaves_count):
                                     ec.velocity_forward(i, speed)
                             else:
                                 ec.velocity_forward(int(slave), speed)
                             send_response(True, f"Velocity forward: {speed}")
-                    
+
                     elif cmd == 'velocity_backward':
                         if data:
                             slave = data.get('slave', 'all')
                             speed = data.get('speed', ec._velocity)
+                            shared_moving.value = 1  # Mark as moving for OSC
                             if slave == 'all':
                                 for i in range(ec.slaves_count):
                                     ec.velocity_backward(i, speed)
                             else:
                                 ec.velocity_backward(int(slave), speed)
                             send_response(True, f"Velocity backward: {speed}")
-                    
+
                     elif cmd == 'velocity_stop':
                         if data:
                             slave = data.get('slave', 'all')
@@ -1431,6 +1469,7 @@ class MotorProcess:
                                 ec.velocity_stop(i)
                         else:
                             ec.velocity_stop(int(slave))
+                        shared_moving.value = 0  # Mark as stopped
                         send_response(True, "Velocity stopped")
                     
                     elif cmd == 'set_speed':
@@ -1835,7 +1874,7 @@ class MotorProcess:
                                             return False
                                         if ec.has_fault(slave_idx):
                                             return False
-                                        update_shared_status()  # Keep PDO loop alive to prevent Er81b
+                                        update_shared_status(send_osc_movement=True)  # Keep PDO loop alive and send OSC
                                         time.sleep(0.01)
                                     return True
 
@@ -1888,7 +1927,7 @@ class MotorProcess:
                                             break
                                         if ec.has_fault(slave_idx):
                                             break
-                                        update_shared_status()
+                                        update_shared_status(send_osc_movement=True)
                                         time.sleep(0.01)
 
                                     ec.velocity_stop(slave_idx)
@@ -1933,7 +1972,7 @@ class MotorProcess:
                                             break
                                         if ec.has_fault(slave_idx):
                                             break
-                                        update_shared_status()
+                                        update_shared_status(send_osc_movement=True)
                                         time.sleep(0.01)
 
                                     ec.velocity_stop(slave_idx)
@@ -1980,6 +2019,231 @@ class MotorProcess:
                         for i in range(ec.slaves_count):
                             ec.velocity_stop(i)
                         send_response(True, "Loop test stop requested")
+
+                    elif cmd == 'multi_loop_test_start':
+                        # Multi-slave loop test: move multiple slaves back and forth simultaneously
+                        if not data:
+                            send_response(False, "No multi-loop test data provided")
+                            continue
+
+                        slaves = data.get('slaves', [])
+                        pos1 = data.get('pos1', 0)
+                        pos2 = data.get('pos2', 0.1)
+                        cycles = data.get('cycles', 5)  # 0 = infinite
+                        speed = data.get('speed', ec._velocity)
+                        start_delay = data.get('start_delay', 0)
+                        stop_delay = data.get('stop_delay', 0)
+
+                        if not slaves:
+                            send_response(False, "No slaves specified for multi-loop test")
+                            continue
+
+                        # Validate slave indices
+                        valid_slaves = [s for s in slaves if s < ec.slaves_count]
+                        if not valid_slaves:
+                            send_response(False, "No valid slaves specified")
+                            continue
+
+                        print(f"\n[MULTI-LOOP TEST] Starting: Slaves {[s+1 for s in valid_slaves]}, Pos1={pos1}m, Pos2={pos2}m, Cycles={cycles}, Speed={speed}")
+
+                        # Clear stop flag
+                        shared_stop.value = 0
+                        shared_moving.value = 1
+
+                        # Send immediate response
+                        send_response(True, f"Multi-loop test started", {
+                            'multi_loop_test': {
+                                'status': 'started',
+                                'slaves': valid_slaves,
+                                'pos1': pos1,
+                                'pos2': pos2,
+                                'cycles': cycles
+                            }
+                        })
+
+                        def run_multi_loop_test(slave_list, p1, p2, num_cycles, vel_speed, delay_start, delay_stop):
+                            try:
+                                max_cycles = 999999 if num_cycles == 0 else num_cycles
+                                tolerance = 0.002  # 2mm tolerance
+
+                                # Helper function to update all slave statuses
+                                def send_all_status(status_dict, cycle, delay_duration=None):
+                                    data = {
+                                        'multi_loop_test': {
+                                            'status': 'all_status',
+                                            'slave_statuses': status_dict,
+                                            'current_cycle': cycle
+                                        }
+                                    }
+                                    if delay_duration is not None:
+                                        data['multi_loop_test']['delay_duration'] = delay_duration
+                                    send_response(True, f"Cycle {cycle}", data)
+
+                                # Helper function to wait with stop check
+                                def delay_with_stop_check(delay_seconds):
+                                    if delay_seconds <= 0:
+                                        return True
+                                    steps = int(delay_seconds * 100)
+                                    for _ in range(steps):
+                                        if shared_stop.value == 1:
+                                            return False
+                                        # Check for faults in any slave
+                                        for s in slave_list:
+                                            if ec.has_fault(s):
+                                                return False
+                                        update_shared_status(send_osc_movement=True)
+                                        time.sleep(0.01)
+                                    return True
+
+                                # Helper function to check if all slaves reached target
+                                def all_reached_target(target_pos):
+                                    for s in slave_list:
+                                        if abs(ec.read_position_meters(s) - target_pos) > tolerance:
+                                            return False
+                                    return True
+
+                                for cycle in range(max_cycles):
+                                    if shared_stop.value == 1:
+                                        print(f"  [MULTI-LOOP] Stopped by user at cycle {cycle + 1}")
+                                        break
+
+                                    # Check for faults
+                                    fault_found = False
+                                    for s in slave_list:
+                                        if ec.has_fault(s):
+                                            error_code = ec.read_error_code(s)
+                                            error_name = ec.get_error_name(error_code)
+                                            print(f"  [MULTI-LOOP] Slave {s+1} fault: {error_name}")
+                                            fault_found = True
+                                            break
+                                    if fault_found:
+                                        break
+
+                                    # Start delay
+                                    if delay_start > 0:
+                                        print(f"  [MULTI-LOOP] Cycle {cycle + 1}: Waiting {delay_start}s before start")
+                                        status_dict = {s: 'wait' for s in slave_list}
+                                        send_all_status(status_dict, cycle + 1, delay_duration=delay_start)
+                                        if not delay_with_stop_check(delay_start):
+                                            break
+
+                                    # Move forward: all slaves to pos2 simultaneously
+                                    print(f"  [MULTI-LOOP] Cycle {cycle + 1}: Moving all slaves to {p2}m")
+                                    status_dict = {s: 'moving' for s in slave_list}
+                                    send_all_status(status_dict, cycle + 1)
+
+                                    # Start velocity movement for all slaves
+                                    for s in slave_list:
+                                        current_pos = ec.read_position_meters(s)
+                                        if p2 > current_pos:
+                                            ec.velocity_forward(s, vel_speed)
+                                        else:
+                                            ec.velocity_backward(s, vel_speed)
+
+                                    # Wait until all reach target
+                                    while not all_reached_target(p2):
+                                        if shared_stop.value == 1:
+                                            break
+                                        fault_found = False
+                                        for s in slave_list:
+                                            if ec.has_fault(s):
+                                                fault_found = True
+                                                break
+                                        if fault_found:
+                                            break
+                                        update_shared_status(send_osc_movement=True)
+                                        time.sleep(0.01)
+
+                                    # Stop all slaves
+                                    for s in slave_list:
+                                        ec.velocity_stop(s)
+
+                                    if shared_stop.value == 1:
+                                        break
+
+                                    # Stop delay
+                                    if delay_stop > 0:
+                                        print(f"  [MULTI-LOOP] Cycle {cycle + 1}: Waiting {delay_stop}s at pos2")
+                                        status_dict = {s: 'wait' for s in slave_list}
+                                        send_all_status(status_dict, cycle + 1, delay_duration=delay_stop)
+                                        if not delay_with_stop_check(delay_stop):
+                                            break
+                                    else:
+                                        time.sleep(0.1)
+
+                                    # Move backward: all slaves to pos1 simultaneously
+                                    print(f"  [MULTI-LOOP] Cycle {cycle + 1}: Moving all slaves to {p1}m")
+                                    status_dict = {s: 'moving' for s in slave_list}
+                                    send_all_status(status_dict, cycle + 1)
+
+                                    for s in slave_list:
+                                        current_pos = ec.read_position_meters(s)
+                                        if p1 > current_pos:
+                                            ec.velocity_forward(s, vel_speed)
+                                        else:
+                                            ec.velocity_backward(s, vel_speed)
+
+                                    # Wait until all reach target
+                                    while not all_reached_target(p1):
+                                        if shared_stop.value == 1:
+                                            break
+                                        fault_found = False
+                                        for s in slave_list:
+                                            if ec.has_fault(s):
+                                                fault_found = True
+                                                break
+                                        if fault_found:
+                                            break
+                                        update_shared_status(send_osc_movement=True)
+                                        time.sleep(0.01)
+
+                                    # Stop all slaves
+                                    for s in slave_list:
+                                        ec.velocity_stop(s)
+
+                                    if shared_stop.value == 1:
+                                        break
+
+                                    time.sleep(0.1)
+                                    print(f"  [MULTI-LOOP] Cycle {cycle + 1} complete")
+
+                                # Test finished
+                                for s in slave_list:
+                                    ec.velocity_stop(s)
+                                shared_moving.value = 0
+
+                                if shared_stop.value == 1:
+                                    send_response(True, "Multi-loop test stopped", {
+                                        'multi_loop_test': {'status': 'stopped', 'current_cycle': cycle + 1}
+                                    })
+                                else:
+                                    send_response(True, f"Multi-loop test completed: {cycle + 1} cycles", {
+                                        'multi_loop_test': {'status': 'completed', 'total_cycles': cycle + 1}
+                                    })
+
+                            except Exception as e:
+                                print(f"  [MULTI-LOOP] Error: {e}")
+                                for s in slave_list:
+                                    ec.velocity_stop(s)
+                                shared_moving.value = 0
+                                send_response(False, f"Multi-loop test error: {e}")
+
+                        # Start thread
+                        multi_loop_thread = threading.Thread(
+                            target=run_multi_loop_test,
+                            args=(valid_slaves, pos1, pos2, cycles, speed, start_delay, stop_delay),
+                            daemon=True
+                        )
+                        multi_loop_thread.start()
+
+                    elif cmd == 'multi_loop_test_stop':
+                        # Stop multi-loop test
+                        print("[MULTI-LOOP] Stop requested")
+                        shared_stop.value = 1
+                        # Stop all slaves
+                        for i in range(ec.slaves_count):
+                            ec.velocity_stop(i)
+                        send_response(True, "Multi-loop test stop requested")
 
                     elif cmd in [MotorProcess.CMD_TEMPLATE, MotorProcess.CMD_TEMPLATE_LOOP]:
                         import json
@@ -2350,8 +2614,8 @@ class MotorProcess:
                                                 break
                                             if shared_stop.value == 1:
                                                 break
-                                            # Update positions during delay
-                                            update_shared_status()
+                                            # Update positions during delay (keep OSC movement messages flowing)
+                                            update_shared_status(send_osc_movement=True)
                                             time.sleep(0.1)
 
                                     # Calculate step time and send complete notification

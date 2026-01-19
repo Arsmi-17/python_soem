@@ -259,6 +259,137 @@
             color: var(--text-gold);
         }
 
+        /* Multi-Slave Loop Test block styling */
+        .multi-loop-test-block {
+            border: 1px solid var(--accent-purple);
+        }
+
+        .multi-loop-test-block h4 {
+            color: var(--accent-purple);
+        }
+
+        .multi-loop-container {
+            display: grid;
+            grid-template-columns: 50% 50%;
+            gap: 10px;
+        }
+
+        /* PV Mode 2-row layout */
+        .pv-row-1 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .pv-row-2 {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 12px;
+        }
+
+        /* Override max-width constraints for PV mode blocks */
+        .pv-row-1 .control-block,
+        .pv-row-1 .speed-block,
+        .pv-row-1 .loop-test-block {
+            max-width: none !important;
+            width: 100%;
+        }
+
+        .pv-row-2 .control-block,
+        .pv-row-2 .multi-loop-test-block {
+            max-width: none !important;
+            width: 100%;
+        }
+
+        .multi-loop-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .multi-loop-monitor {
+            background: var(--bg-dark);
+            border: 1px solid var(--border-ui);
+            border-radius: 6px;
+            padding: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .slave-select-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+
+        .slave-btn {
+            padding: 6px 10px;
+            font-size: 0.75rem;
+            border: 1px solid var(--border-ui);
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 45px;
+            text-align: center;
+        }
+
+        .slave-btn:hover {
+            border-color: var(--accent-purple);
+            color: var(--text-primary);
+        }
+
+        .slave-btn.selected {
+            background: var(--accent-purple);
+            border-color: var(--accent-purple);
+            color: white;
+        }
+
+        .slave-monitor-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 6px;
+            margin-bottom: 4px;
+            background: var(--bg-card);
+            border-radius: 4px;
+            font-size: 0.7rem;
+        }
+
+        .slave-monitor-item .slave-num {
+            font-weight: 600;
+            color: var(--accent-purple);
+        }
+
+        .slave-monitor-item .slave-status {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.65rem;
+        }
+
+        .slave-monitor-item .slave-status.idle {
+            background: var(--bg-dark);
+            color: var(--text-secondary);
+        }
+
+        .slave-monitor-item .slave-status.moving {
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        .slave-monitor-item .slave-status.wait {
+            background: var(--text-gold);
+            color: black;
+        }
+
+        .slave-monitor-item .slave-status.done {
+            background: var(--accent-green);
+            color: white;
+        }
+
         /* Compact buttons */
         .btn {
             padding: 6px 12px;
@@ -503,6 +634,7 @@
         .indicator-ok { background: var(--accent-green); box-shadow: 0 0 8px rgba(63, 185, 80, 0.6); }
         .indicator-error { background: var(--accent-red); box-shadow: 0 0 8px rgba(248, 81, 73, 0.6); }
         .indicator-disabled { background: var(--text-secondary); }
+        .indicator-connected { background: var(--text-gold); box-shadow: 0 0 8px rgba(210, 153, 34, 0.6); }
 
         table {
             width: 100%;
@@ -853,6 +985,10 @@
                     <span class="status-label">Slave Count:</span>
                     <span class="status-value" id="slaveCount">0</span>
                 </div>
+                <div class="status-item">
+                    <span class="status-label">Operation Status:</span>
+                    <span class="status-value" id="operationStatus" style="color: var(--text-secondary);">Idle</span>
+                </div>
 
                 <!-- Homing Block -->
                 <div class="homing-block">
@@ -873,7 +1009,7 @@
 
         <!-- Operation Section (Right 75%) -->
         <div class="section">
-            <h2 class="section-title">Operation</h2>
+            <h2 class="section-title">Operation <span id="operationModeLabel" style="font-size: 0.8rem; color: var(--text-gold); font-weight: normal;"></span></h2>
 
             <div id="errorControls">
                 <div class="control-block error-block">
@@ -983,7 +1119,7 @@
                         <div class="speed-block pp" id="speedPP">
                             <h4>PP Speed Settings</h4>
                             <div class="config-label">Speed (x1000 units/s):</div>
-                            <input type="number" id="ppSpeed" value="80" oninput="updatePPEffective()">
+                            <input type="number" id="ppSpeed" value="80" step="0.1" oninput="updatePPEffective()">
                             <div class="speed-info">
                                 Velocity: <span id="ppEffectiveVel">80000</span> units/s |
                                 Accel/Decel: <span id="ppEffectiveAccel">40000</span> units/s²
@@ -1128,80 +1264,168 @@
 
                 <!-- PV Actions -->
                 <div id="pvActions" class="hidden">
-                    <div class="operation-grid">
-                    <div class="control-block" id="pvMovementBlock">
-                        <h4>Velocity Control</h4>
-                        <select id="slaveSelectVel" onchange="updateButtonStates()">
-                            <option value="">-- Select Slave --</option>
-                        </select>
-                        <div class="velocity-btns" id="pvVelocityBtns">
-                            <button class="btn btn-enable" onclick="velocityForward()" id="velForwardBtn" disabled>▲ FORWARD</button>
-                            <button class="btn btn-emergency" onclick="emergencyStop()">STOP</button>
-                            <button class="btn btn-primary" onclick="velocityBackward()" id="velBackwardBtn" disabled>▼ BACKWARD</button>
+                    <!-- Row 1: Velocity Control | Speed Settings | Loop Test -->
+                    <div class="pv-row-1">
+                        <div class="control-block" id="pvMovementBlock">
+                            <h4>Velocity Control</h4>
+                            <select id="slaveSelectVel" onchange="updateButtonStates()">
+                                <option value="">-- Select Slave --</option>
+                            </select>
+                            <div class="velocity-btns" id="pvVelocityBtns">
+                                <button class="btn btn-enable" onclick="velocityForward()" id="velForwardBtn" disabled>▲ FORWARD</button>
+                                <button class="btn btn-emergency" onclick="emergencyStop()">STOP</button>
+                                <button class="btn btn-primary" onclick="velocityBackward()" id="velBackwardBtn" disabled>▼ BACKWARD</button>
+                            </div>
+                        </div>
+
+                        <!-- PV Speed Block -->
+                        <div class="speed-block pv" id="speedPV">
+                            <h4>PV Speed Settings</h4>
+                            <div class="config-label">Speed (x1000 units/s):</div>
+                            <input type="number" id="pvSpeed" value="1" step="0.1" min="0" oninput="updatePVEffective(false)" onblur="updatePVEffective(true)">
+                            <div style="display: flex; align-items: center; gap: 6px; margin: 6px 0;">
+                                <input type="checkbox" id="pvSpeedLimit" checked onchange="updatePVEffective(true)">
+                                <label for="pvSpeedLimit" style="font-size: 0.75rem; color: var(--text-secondary);">Limit speed (0 - 5)</label>
+                            </div>
+                            <div class="speed-info">
+                                Velocity: <span id="pvEffectiveVel">1000</span> units/s |
+                                Accel/Decel: <span id="pvEffectiveAccel">500</span> units/s²
+                            </div>
+                            <button class="btn btn-gold" onclick="applyPVSpeed()" style="width: 100%;">Apply PV Speed</button>
+                        </div>
+
+                        <!-- Loop Test Block -->
+                        <div class="control-block loop-test-block" id="loopTestBlock">
+                            <h4>Loop Test</h4>
+                            <!-- Live Status Display -->
+                            <div id="loopTestLiveStatus" style="display: none; margin-bottom: 10px; padding: 10px; background: var(--bg-dark); border-radius: 6px; border: 1px solid var(--border-ui);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <span id="loopTestLiveAction" style="font-weight: 600; color: var(--accent-blue);">Idle</span>
+                                    <span id="loopTestLiveCycle" style="font-size: 0.75rem; color: var(--text-secondary);">Cycle: 0/0</span>
+                                </div>
+                                <div id="loopTestLiveValue" style="font-size: 1.5rem; font-weight: 700; font-family: 'Courier New', monospace; color: var(--accent-green); text-align: center;">
+                                    0.000
+                                </div>
+                            </div>
+                            <select id="loopTestSlaveSelect" onchange="updateLoopTestStartBtn()">
+                                <option value="">-- Select Slave --</option>
+                            </select>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                                <div>
+                                    <div class="config-label">Position 1 (m):</div>
+                                    <input type="number" id="loopTestPos1" value="0" step="0.01" style="margin: 0;">
+                                </div>
+                                <div>
+                                    <div class="config-label">Position 2 (m):</div>
+                                    <input type="number" id="loopTestPos2" value="0.04" step="0.01" style="margin: 0;">
+                                </div>
+                            </div>
+                            <!-- Position Limit Checkbox -->
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+                                <input type="checkbox" id="loopTestPosLimit" checked onchange="applyLoopTestPosLimit()">
+                                <label for="loopTestPosLimit" style="font-size: 0.75rem; color: var(--text-secondary);">Limit position (-0.01 to 0.04)</label>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                                <div>
+                                    <div class="config-label">Start Delay (s):</div>
+                                    <input type="number" id="loopTestStartDelay" value="0" min="0" step="0.1" style="margin: 0;">
+                                </div>
+                                <div>
+                                    <div class="config-label">Stop Delay (s):</div>
+                                    <input type="number" id="loopTestStopDelay" value="0" min="0" step="0.1" style="margin: 0;">
+                                </div>
+                            </div>
+                            <div style="margin-bottom: 8px;">
+                                <div class="config-label">Cycles (0 = infinite):</div>
+                                <input type="number" id="loopTestCycles" value="5" min="0" style="margin: 0;">
+                            </div>
+                            <div id="loopTestStatus" style="margin-bottom: 8px; padding: 6px; background: var(--bg-dark); border-radius: 4px; font-size: 0.75rem; display: none;">
+                                <span id="loopTestStatusText">Idle</span>
+                                <span id="loopTestCycleCount" style="float: right; color: var(--accent-blue);"></span>
+                            </div>
+                            <div class="grid-2">
+                                <button class="btn btn-enable" onclick="startLoopTest()" id="loopTestStartBtn" disabled>▶ Start</button>
+                                <button class="btn btn-disable" onclick="stopLoopTest()" id="loopTestStopBtn" disabled>■ Stop</button>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- PV Speed Block -->
-                    <div class="speed-block pv" id="speedPV">
-                        <h4>PV Speed Settings</h4>
-                        <div class="config-label">Speed (x1000 units/s):</div>
-                        <input type="number" id="pvSpeed" value="50" oninput="updatePVEffective()">
-                        <div class="speed-info">
-                            Velocity: <span id="pvEffectiveVel">50000</span> units/s |
-                            Accel/Decel: <span id="pvEffectiveAccel">25000</span> units/s²
-                        </div>
-                        <button class="btn btn-gold" onclick="applyPVSpeed()" style="width: 100%;">Apply PV Speed</button>
-                    </div>
-
-                    <!-- Loop Test Block -->
-                    <div class="control-block loop-test-block" id="loopTestBlock">
-                        <h4>Loop Test</h4>
-                        <!-- Live Status Display -->
-                        <div id="loopTestLiveStatus" style="display: none; margin-bottom: 10px; padding: 10px; background: var(--bg-dark); border-radius: 6px; border: 1px solid var(--border-ui);">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                <span id="loopTestLiveAction" style="font-weight: 600; color: var(--accent-blue);">Idle</span>
-                                <span id="loopTestLiveCycle" style="font-size: 0.75rem; color: var(--text-secondary);">Cycle: 0/0</span>
+                    <!-- Row 2: Multi-Slave Loop Test (col 1&2) | Empty (col 3) -->
+                    <div class="pv-row-2">
+                        <!-- Multi-Slave Loop Test Block -->
+                        <div class="control-block multi-loop-test-block" id="multiLoopTestBlock">
+                            <h4>Multi-Slave Loop Test</h4>
+                            <div class="multi-loop-container">
+                                <!-- Controls Column (75%) -->
+                                <div class="multi-loop-controls">
+                                    <!-- Slave Selection Buttons -->
+                                    <div>
+                                        <div class="config-label">Select Slaves:</div>
+                                        <div class="slave-select-grid" id="multiLoopSlaveGrid">
+                                            <!-- Slave buttons will be populated dynamically -->
+                                        </div>
+                                        <div style="display: flex; gap: 4px; margin-top: 4px;">
+                                            <button class="btn btn-sm" onclick="selectAllMultiLoopSlaves()" style="flex: 1; background: var(--bg-card);">All</button>
+                                            <button class="btn btn-sm" onclick="deselectAllMultiLoopSlaves()" style="flex: 1; background: var(--bg-card);">None</button>
+                                        </div>
+                                    </div>
+                                    <!-- Position Inputs -->
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                        <div>
+                                            <div class="config-label">Position 1 (m):</div>
+                                            <input type="number" id="multiLoopPos1" value="0" step="0.01" style="margin: 0;">
+                                        </div>
+                                        <div>
+                                            <div class="config-label">Position 2 (m):</div>
+                                            <input type="number" id="multiLoopPos2" value="0.04" step="0.01" style="margin: 0;">
+                                        </div>
+                                    </div>
+                                    <!-- Position Limit Checkbox -->
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <input type="checkbox" id="multiLoopPosLimit" checked onchange="applyMultiLoopPosLimit()">
+                                        <label for="multiLoopPosLimit" style="font-size: 0.75rem; color: var(--text-secondary);">Limit position (-0.01 to 0.04)</label>
+                                    </div>
+                                    <!-- Delay Inputs -->
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                        <div>
+                                            <div class="config-label">Start Delay (s):</div>
+                                            <input type="number" id="multiLoopStartDelay" value="0" min="0" step="0.1" style="margin: 0;">
+                                        </div>
+                                        <div>
+                                            <div class="config-label">Stop Delay (s):</div>
+                                            <input type="number" id="multiLoopStopDelay" value="0" min="0" step="0.1" style="margin: 0;">
+                                        </div>
+                                    </div>
+                                    <!-- Cycles -->
+                                    <div>
+                                        <div class="config-label">Cycles (0 = infinite):</div>
+                                        <input type="number" id="multiLoopCycles" value="5" min="0" style="margin: 0;">
+                                    </div>
+                                    <!-- Cycle Counter -->
+                                    <div id="multiLoopCycleDisplay" style="display: none; padding: 6px; background: var(--bg-dark); border-radius: 4px; text-align: center;">
+                                        <span style="color: var(--accent-purple); font-weight: 600;">Cycle: </span>
+                                        <span id="multiLoopCurrentCycle" style="color: var(--accent-green); font-weight: 700;">0</span>
+                                        <span style="color: var(--text-secondary);"> / </span>
+                                        <span id="multiLoopTotalCycles" style="color: var(--text-secondary);">0</span>
+                                    </div>
+                                    <!-- Start/Stop Buttons -->
+                                    <div class="grid-2">
+                                        <button class="btn btn-enable" onclick="startMultiLoopTest()" id="multiLoopStartBtn" disabled>▶ Start</button>
+                                        <button class="btn btn-disable" onclick="stopMultiLoopTest()" id="multiLoopStopBtn" disabled>■ Stop</button>
+                                    </div>
+                                </div>
+                                <!-- Monitor Column (50%) -->
+                                <div class="multi-loop-monitor" id="multiLoopMonitor">
+                                    <div style="font-size: 0.8rem; color: var(--accent-purple); font-weight: 600; text-align: center; margin-bottom: 8px; border-bottom: 1px solid var(--border-ui); padding-bottom: 6px;">Live Status</div>
+                                    <div id="multiLoopSlaveStatus">
+                                        <!-- Slave status items will be populated dynamically -->
+                                        <div style="color: var(--text-secondary); font-size: 0.75rem; text-align: center;">Select slaves to monitor</div>
+                                    </div>
+                                </div>
                             </div>
-                            <div id="loopTestLiveValue" style="font-size: 1.5rem; font-weight: 700; font-family: 'Courier New', monospace; color: var(--accent-green); text-align: center;">
-                                0.000
-                            </div>
                         </div>
-                        <select id="loopTestSlaveSelect" onchange="updateLoopTestStartBtn()">
-                            <option value="">-- Select Slave --</option>
-                        </select>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-                            <div>
-                                <div class="config-label">Position 1 (m):</div>
-                                <input type="number" id="loopTestPos1" value="0" step="0.01" style="margin: 0;">
-                            </div>
-                            <div>
-                                <div class="config-label">Position 2 (m):</div>
-                                <input type="number" id="loopTestPos2" value="0.1" step="0.01" style="margin: 0;">
-                            </div>
-                        </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-                            <div>
-                                <div class="config-label">Start Delay (s):</div>
-                                <input type="number" id="loopTestStartDelay" value="0" min="0" step="0.1" style="margin: 0;">
-                            </div>
-                            <div>
-                                <div class="config-label">Stop Delay (s):</div>
-                                <input type="number" id="loopTestStopDelay" value="0" min="0" step="0.1" style="margin: 0;">
-                            </div>
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <div class="config-label">Cycles (0 = infinite):</div>
-                            <input type="number" id="loopTestCycles" value="5" min="0" style="margin: 0;">
-                        </div>
-                        <div id="loopTestStatus" style="margin-bottom: 8px; padding: 6px; background: var(--bg-dark); border-radius: 4px; font-size: 0.75rem; display: none;">
-                            <span id="loopTestStatusText">Idle</span>
-                            <span id="loopTestCycleCount" style="float: right; color: var(--accent-blue);"></span>
-                        </div>
-                        <div class="grid-2">
-                            <button class="btn btn-enable" onclick="startLoopTest()" id="loopTestStartBtn" disabled>▶ Start</button>
-                            <button class="btn btn-disable" onclick="stopLoopTest()" id="loopTestStopBtn" disabled>■ Stop</button>
-                        </div>
-                    </div>
+                        <!-- Empty column for balance -->
+                        <div></div>
                     </div>
                 </div>
             </div>
@@ -1256,6 +1480,14 @@
         let selectedMode = 8; // CSP default
         let isTemplateRunning = false; // Track if template is running
 
+        // Cache for status updates to avoid unnecessary DOM changes
+        let lastStatusStateKey = null;
+        let lastStatusMode = null;
+        let lastNumSlaves = null;
+        let lastInterface = null;
+        let lastFaultState = null;
+        let lastMovingState = null;
+
         // Template step timing tracking
         let stepTimings = {};  // { stepIndex: { startTime, endTime, elapsed } }
         let currentStepIndex = null;
@@ -1270,6 +1502,13 @@
         let loopTestDelayTimer = null;
         let loopTestDelayRemaining = 0;
         let loopTestSelectedSlave = null;
+
+        // Multi-slave loop test state
+        let multiLoopRunning = false;
+        let multiLoopSelectedSlaves = new Set();  // Set of selected slave indices
+        let multiLoopSlaveStatus = {};  // { slaveIdx: 'idle'|'moving'|'wait'|'done' }
+        let multiLoopSlaveDelay = {};  // { slaveIdx: { start: timestamp, duration: seconds } }
+        let multiLoopDelayInterval = null;  // Interval for updating delay display
 
         // Toggle UI version
         function toggleUI() {
@@ -1390,16 +1629,8 @@
             };
         }
 
-        // Update UI with status
+        // Update UI with status (optimized to minimize DOM updates)
         function updateStatus(status) {
-            const dot = document.getElementById('statusDot');
-            const text = document.getElementById('statusText');
-            const modeLabel = document.getElementById('modeLabel');
-            const slaveCountEl = document.getElementById('slaveCount');
-            const modeSelector = document.getElementById('modeSelector');
-            const interfaceDisplay = document.getElementById('interfaceDisplay');
-            const ethercatStatus = document.getElementById('ethercatStatus');
-
             const statusWords = status.status_words || [];
             const errorCodes = status.error_codes || [];
             let faultDetected = false;
@@ -1415,66 +1646,90 @@
             hasFault = faultDetected;
             isEnabled = status.state === 2;
 
-            // Update status dot
-            dot.className = 'status-dot';
-            if (faultDetected) {
-                dot.classList.add('fault');
-                text.textContent = `FAULT (Slave ${faultSlaves.map(s => `#${s+1}`).join(', ')})`;
-                text.style.color = 'var(--accent-red)';
-                ethercatStatus.textContent = 'FAULT';
-                ethercatStatus.style.color = 'var(--accent-red)';
-            } else {
-                text.style.color = '';
-                if (status.state === 0) {
-                    dot.classList.add('disconnected');
-                    text.textContent = 'Disconnected';
-                    ethercatStatus.textContent = 'Disconnected';
+            // Store global state for position table indicator updates
+            window.lastStatusState = status.state;
+
+            // Only update status display if state changed
+            const stateKey = `${status.state}-${faultDetected}-${status.moving}-${faultSlaves.join(',')}`;
+            if (stateKey !== lastStatusStateKey) {
+                lastStatusStateKey = stateKey;
+
+                const dot = document.getElementById('statusDot');
+                const text = document.getElementById('statusText');
+                const ethercatStatus = document.getElementById('ethercatStatus');
+
+                dot.className = 'status-dot';
+                if (faultDetected) {
+                    dot.classList.add('fault');
+                    text.textContent = `FAULT (Slave ${faultSlaves.map(s => `#${s+1}`).join(', ')})`;
+                    text.style.color = 'var(--accent-red)';
+                    ethercatStatus.textContent = 'FAULT';
                     ethercatStatus.style.color = 'var(--accent-red)';
-                } else if (status.state === 1) {
-                    dot.classList.add('connected');
-                    text.textContent = 'Connected';
-                    ethercatStatus.textContent = 'Connected';
-                    ethercatStatus.style.color = 'var(--text-gold)';
-                } else if (status.state === 2) {
-                    dot.classList.add('enabled');
-                    text.textContent = 'Enabled';
-                    ethercatStatus.textContent = 'Enabled';
-                    ethercatStatus.style.color = 'var(--accent-green)';
+                } else {
+                    text.style.color = '';
+                    if (status.state === 0) {
+                        dot.classList.add('disconnected');
+                        text.textContent = 'Disconnected';
+                        ethercatStatus.textContent = 'Disconnected';
+                        ethercatStatus.style.color = 'var(--accent-red)';
+                    } else if (status.state === 1) {
+                        dot.classList.add('connected');
+                        text.textContent = 'Connected';
+                        ethercatStatus.textContent = 'Connected';
+                        ethercatStatus.style.color = 'var(--text-gold)';
+                    } else if (status.state === 2) {
+                        dot.classList.add('enabled');
+                        text.textContent = 'Enabled';
+                        ethercatStatus.textContent = 'Enabled';
+                        ethercatStatus.style.color = 'var(--accent-green)';
+                    }
+                    if (status.moving) {
+                        dot.classList.remove('enabled', 'connected');
+                        dot.classList.add('moving');
+                        text.textContent += ' (Moving...)';
+                    }
                 }
-                if (status.moving) {
-                    dot.classList.remove('enabled', 'connected');
-                    dot.classList.add('moving');
-                    text.textContent += ' (Moving...)';
-                }
+
+                // Update UI state only when state changes
+                updateInterfaceState();
+                updateAllButtonStates();
             }
 
-            // Update mode
-            if (status.mode !== undefined) {
+            // Only update mode if changed
+            if (status.mode !== undefined && status.mode !== lastStatusMode) {
+                lastStatusMode = status.mode;
                 selectedMode = status.mode;
                 const modeNames = {1: 'PP', 3: 'PV', 8: 'CSP'};
-                modeLabel.textContent = modeNames[status.mode] || status.mode;
-                modeSelector.value = status.mode.toString();
+                const modeName = modeNames[status.mode] || status.mode;
+                document.getElementById('modeLabel').textContent = modeName;
+                document.getElementById('modeSelector').value = status.mode.toString();
+                // Update mode label next to Operation title
+                const opModeLabel = document.getElementById('operationModeLabel');
+                if (opModeLabel) {
+                    opModeLabel.textContent = `(${modeName} Mode)`;
+                }
                 updateModeDisplay(status.mode);
             }
 
-            // Update slave count
+            // Only update slave count if changed
             const numSlaves = status.num_slaves || status.positions?.length || 0;
-            slaveCountEl.textContent = numSlaves;
-
-            // Update interface
-            if (status.interface) {
-                interfaceDisplay.textContent = status.interface;
+            if (numSlaves !== lastNumSlaves) {
+                lastNumSlaves = numSlaves;
+                document.getElementById('slaveCount').textContent = numSlaves;
+                updateSlaveSelector(numSlaves);
             }
 
-            // Update position table
+            // Only update interface if changed
+            if (status.interface && status.interface !== lastInterface) {
+                lastInterface = status.interface;
+                document.getElementById('interfaceDisplay').textContent = status.interface;
+            }
+
+            // Always update position table (positions change frequently)
             updatePositionTable(status);
-            updateSlaveSelector(numSlaves);
 
-            // Update UI state (steps, controls visibility)
-            updateInterfaceState();
-
-            // Update all button states based on current state
-            updateAllButtonStates();
+            // Update operation status
+            updateOperationStatus(status);
 
             // Update UDP/OSC status
             if (status.udp_connected !== undefined) {
@@ -1643,42 +1898,237 @@
             }
         }
 
-        // Update position table
+        // Cache for position table to avoid unnecessary DOM updates
+        let lastPositionTableData = null;
+
+        // Leadshine Drive Error Code Lookup Table (from drive-error-list-leadshine.pdf)
+        const ERROR_CODE_MAP = {
+            // Display codes (0x3FFE format) - these match what we typically see
+            0x0e0: 'Over Current',
+            0x0c0: 'Over Voltage',
+            0x100: 'Overload',
+            0x120: 'Regenerative Discharge Circuit Overload',
+            0x121: 'Regenerative Resistance Error',
+            0x150: 'Encoder Connection Error',
+            0x151: 'Encoder Communication Error',
+            0x152: 'Initialize Encoder Position Error',
+            0x170: 'Encoder Data Error',
+            0x180: 'Position Following Error',
+            0x190: 'Excessive Vibration Error',
+            0x1a0: 'Over Speed',
+            0x1a1: 'Speed Out of Control',
+            0x1b0: 'Position Instruction Frequency Too Large',
+            0x1b1: 'Electronic Gear Setup Error',
+            0x240: 'EEPROM Parameters Saving Error',
+            0x241: 'Saving Module Hardware Error',
+            0x242: 'Error/Diagnosis Record Keeping Error',
+            0x243: 'Saving Signals Error',
+            0x244: 'Communication Parameters Saving Error',
+            0x245: 'Motion Parameters Saving Error',
+            0x260: 'Overtravel Positive/Negative Input Valid',
+            0x570: 'Quick Stop Alarm',
+            0x5f0: 'Auto-tuning Error',
+            0x801: 'ESM State Machine Conversion Failed',
+            0x802: 'Out of Memory',
+            0x807: 'Mapping Object Does Not Exist',
+            0x808: 'PDO Mapping Object Length Error',
+            0x809: 'PDO Mapping Object Has No Mapping Attribute',
+            0x811: 'Invalid ESM Conversion Request',
+            0x812: 'Unknown ESM Conversion Request',
+            0x813: 'Boot State Request Protection',
+            0x815: 'Invalid Boot Status Mailbox Configuration',
+            0x816: 'Invalid Pre-Operation Mailbox Configuration',
+            0x818: 'Invalid Input Data',
+            0x819: 'Invalid Output Data',
+            0x81a: 'Synchronizing Error',
+            0x81b: 'Watchdog Timeout',
+            0x81c: 'Invalid Type of Synchronization Manager',
+            0x81d: 'Invalid Output Configuration',
+            0x81e: 'Invalid Input Configuration',
+            0x821: 'Waiting for ESM Initialization',
+            0x822: 'Waiting for ESM Pre-Operation',
+            0x823: 'Waiting for ESM Safe Operation',
+            0x824: 'Invalid Input Data Mapping',
+            0x825: 'Invalid Output Data Mapping',
+            0x827: 'Free Running Mode Not Supported',
+            0x828: 'Synchronizing Mode Not Supported',
+            0x82b: 'Input and Output Invalid',
+            0x82c: 'Fatal Synchronization Error',
+            0x82d: 'Asynchronous Error',
+            0x82e: 'Synchronizing Cycle Too Short',
+            0x830: 'DC Synchronization Configuration Invalid',
+            0x832: 'DC Phase-Locked Loop Failure',
+            0x833: 'DC Sync IO Error',
+            0x834: 'DC Synchronization Timeout',
+            0x835: 'Invalid DC Cycle',
+            0x836: 'Invalid DC Synchronizing Cycle',
+            0x850: 'EEPROM Reading Error',
+            0x851: 'EEPROM Error',
+            0x852: 'Hardware Not Ready',
+            0x870: 'Mode Not Supported',
+            0x871: 'Operation Condition Not Satisfied',
+            // Object 0x603F codes (IEC 61800 format)
+            0x2211: 'Over Current',
+            0x3211: 'Over Voltage',
+            0x3150: 'EEPROM Error Phase A',
+            0x3151: 'EEPROM Error Phase B',
+            0x5201: 'Unsupported Operation Mode',
+            0x5202: 'Operation Condition Not Satisfied',
+            0x5441: 'Quick Stop Alarm',
+            0x5510: 'Memory Overflow',
+            0x5530: 'Save Error',
+            0x5531: 'Saving Module Hardware Error',
+            0x5532: 'Error/Diagnosis Record Keeping Error',
+            0x5533: 'Saving Signals Error',
+            0x5534: 'Communication Parameters Saving Error',
+            0x5535: 'Motion Parameters Saving Error',
+            0x5550: 'EEPROM Inaccessible',
+            0x5551: 'EEPROM Error',
+            0x5552: 'Hardware Not Ready',
+            0x7122: 'Auto-tuning Error',
+            0x7321: 'Encoder Wiring Error',
+            0x7329: 'Limit Switch Alarm',
+            0x8201: 'ESM State Machine Transition Failed',
+            0x8207: 'Mapping Object Does Not Exist',
+            0x8208: 'PDO Mapping Object Length Error',
+            0x8209: 'PDO Mapping Object Has No Mapping Attribute',
+            0x8210: 'Invalid Input and Output',
+            0x8211: 'No Valid Input Data',
+            0x8212: 'No Valid Output Data',
+            0x8213: 'Boot State Request Protection',
+            0x8215: 'Invalid Boot Status Mailbox Configuration',
+            0x8216: 'PreOp Mailbox Error',
+            0x821B: 'Watchdog Timeout',
+            0x821C: 'Invalid Sync Manager Type',
+            0x821D: 'Invalid Output Configuration',
+            0x821E: 'Invalid Input Configuration',
+            0x8224: 'Invalid Process Data Input Mapping',
+            0x8225: 'Invalid Process Data Output Mapping',
+            0x8402: 'Over Speed',
+            0x8611: 'Position Following Error',
+            0x8727: 'Free Running Mode Not Supported',
+            0x8728: 'Synchronous Mode Not Supported',
+            0x872C: 'Fatal Sync Error',
+            0x872D: 'No Synchronization Errors',
+            0x872E: 'Synchronization Period Too Small',
+            0x8730: 'Invalid DC Synchronization Configuration',
+            0x8732: 'DC Phase Locked Loop Failure',
+            0x8733: 'DC Sync IO Error',
+            0x8734: 'DC Synchronization Timeout',
+            0x8735: 'Invalid DC Cycle',
+            0x8736: 'Invalid DC Synchronization Period',
+            0xA001: 'Invalid ESM Conversion Request',
+            0xA002: 'Unknown ESM Conversion Request',
+            0xA003: 'Waiting for ESM Initialization',
+            0xA004: 'Waiting for ESM Pre-Operation',
+            0xA005: 'Waiting for ESM Safe Operation',
+            0xFF02: 'Synchronizing Error'
+        };
+
+        // Get error name from error code
+        function getErrorName(errorCode) {
+            if (errorCode === 0) return null;
+            // Try direct lookup
+            if (ERROR_CODE_MAP[errorCode]) {
+                return ERROR_CODE_MAP[errorCode];
+            }
+            // Try lowercase version for display codes (e.g., 0x81b -> 0x81B)
+            const upperCode = errorCode & 0xFFFF;
+            if (ERROR_CODE_MAP[upperCode]) {
+                return ERROR_CODE_MAP[upperCode];
+            }
+            return null;
+        }
+
+        // Format error display string: "Err<code> <name> (0x<hex>)"
+        function formatErrorStatus(errorCode) {
+            if (errorCode === 0) return 'Error';
+            const hexCode = errorCode.toString(16).toUpperCase();
+            const errorName = getErrorName(errorCode);
+            if (errorName) {
+                return `Err${hexCode} ${errorName} (0x${hexCode})`;
+            }
+            return `Error (0x${hexCode})`;
+        }
+
+        // Update position table (optimized to only update changed values)
         function updatePositionTable(status) {
             const tbody = document.getElementById('positionTable');
             const positions = status.positions || [];
             const statusWords = status.status_words || [];
             const errorCodes = status.error_codes || [];
 
-            let html = '';
+            // Check if we need to rebuild the table structure
+            const rows = tbody.querySelectorAll('tr');
+            // Rebuild if row count differs OR if IDs don't exist (first run with initial HTML)
+            const needsRebuild = rows.length !== positions.length || !document.getElementById('status-0');
+
+            if (needsRebuild && positions.length > 0) {
+                // Build table structure once
+                let html = '';
+                for (let i = 0; i < positions.length; i++) {
+                    html += `
+                        <tr data-slave="${i}">
+                            <td><span class="indicator" id="indicator-${i}"></span></td>
+                            <td>#${String(i + 1).padStart(2, '0')}</td>
+                            <td id="pos-${i}"></td>
+                            <td id="status-${i}"></td>
+                        </tr>
+                    `;
+                }
+                tbody.innerHTML = html;
+            }
+
+            // Update only changed values
+            // Get global state to determine connected/disconnected
+            const globalState = window.lastStatusState || 0;
+
             for (let i = 0; i < positions.length; i++) {
                 const pos = positions[i].toFixed(4);
                 const sw = statusWords[i] || 0;
                 const enabled = (sw & 0x006F) === 0x0027;
                 const fault = (sw & 0x0008) !== 0;
 
+                // Update position cell
+                const posEl = document.getElementById(`pos-${i}`);
+                if (posEl && posEl.textContent !== pos) {
+                    posEl.textContent = pos;
+                }
+
+                // Update indicator and status
+                const indicator = document.getElementById(`indicator-${i}`);
+                const statusEl = document.getElementById(`status-${i}`);
+
                 let indicatorClass = 'indicator-disabled';
                 let statusText = 'Disabled';
+                let statusColor = 'inherit';
 
                 if (fault) {
                     indicatorClass = 'indicator-error';
                     const errorCode = errorCodes[i] || 0;
-                    statusText = `Error (0x${errorCode.toString(16).toUpperCase()})`;
+                    statusText = formatErrorStatus(errorCode);
+                    statusColor = 'var(--accent-red)';
                 } else if (enabled) {
                     indicatorClass = 'indicator-ok';
                     statusText = 'Enabled';
+                    statusColor = 'var(--accent-green)';
+                } else if (globalState >= 1) {
+                    // Connected but disabled - show yellow
+                    indicatorClass = 'indicator-connected';
+                    statusText = 'Disabled';
+                    statusColor = 'var(--text-gold)';
                 }
 
-                html += `
-                    <tr>
-                        <td><span class="indicator ${indicatorClass}"></span></td>
-                        <td>#${String(i + 1).padStart(2, '0')}</td>
-                        <td>${pos}</td>
-                        <td style="color: ${fault ? 'var(--accent-red)' : 'inherit'}">${statusText}</td>
-                    </tr>
-                `;
+                if (indicator) {
+                    indicator.className = `indicator ${indicatorClass}`;
+                }
+                if (statusEl) {
+                    if (statusEl.textContent !== statusText) {
+                        statusEl.textContent = statusText;
+                    }
+                    statusEl.style.color = statusColor;
+                }
             }
-            if (html) tbody.innerHTML = html;
 
             // Update loop test live position if running and moving
             if (loopTestRunning && loopTestSelectedSlave !== null && !loopTestDelayTimer) {
@@ -1689,6 +2139,51 @@
                         valueEl.textContent = slavePos.toFixed(4) + ' m';
                     }
                 }
+            }
+
+            // Update multi-loop test live positions if running
+            if (multiLoopRunning && multiLoopSelectedSlaves.size > 0) {
+                updateMultiLoopMonitor(positions);
+            }
+        }
+
+        // Update operation status display
+        function updateOperationStatus(status) {
+            const opStatus = document.getElementById('operationStatus');
+            if (!opStatus) return;
+
+            let statusText = 'Idle';
+            let statusColor = 'var(--text-secondary)';
+
+            if (status.has_fault || hasFault) {
+                statusText = 'Fault';
+                statusColor = 'var(--accent-red)';
+            } else if (status.moving) {
+                statusText = 'Moving';
+                statusColor = 'var(--accent-blue)';
+            } else if (loopTestRunning) {
+                statusText = 'Loop Test Running';
+                statusColor = 'var(--text-gold)';
+            } else if (multiLoopRunning) {
+                statusText = 'Multi-Loop Test Running';
+                statusColor = 'var(--accent-purple)';
+            } else if (isTemplateRunning) {
+                statusText = 'Template Running';
+                statusColor = 'var(--accent-green)';
+            } else if (status.state === 2) {
+                statusText = 'Ready';
+                statusColor = 'var(--accent-green)';
+            } else if (status.state === 1) {
+                statusText = 'Connected';
+                statusColor = 'var(--text-gold)';
+            } else if (status.state === 0) {
+                statusText = 'Disconnected';
+                statusColor = 'var(--accent-red)';
+            }
+
+            if (opStatus.textContent !== statusText) {
+                opStatus.textContent = statusText;
+                opStatus.style.color = statusColor;
             }
         }
 
@@ -1714,6 +2209,9 @@
                     select.value = currentVal;
                 }
             });
+
+            // Update multi-loop slave grid
+            updateMultiLoopSlaveGrid(count);
 
             updateButtonStates();
         }
@@ -1793,6 +2291,11 @@
             // Handle loop test updates
             if (resp.data && resp.data.loop_test) {
                 handleLoopTestUpdate(resp.data.loop_test);
+            }
+
+            // Handle multi-slave loop test updates
+            if (resp.data && resp.data.multi_loop_test) {
+                handleMultiLoopTestUpdate(resp.data.multi_loop_test);
             }
 
             // Handle communication error
@@ -2062,7 +2565,7 @@
                 log('Please select a slave first', 'err');
                 return;
             }
-            const speed = parseInt(document.getElementById('pvSpeed').value) * 1000;
+            const speed = Math.round(parseFloat(document.getElementById('pvSpeed').value) * 1000);
             sendCmd('velocity_forward', { slave: parseInt(slave), speed: speed });
             log(`Slave #${parseInt(slave) + 1} Forward: ${speed} units/s`, 'com');
         }
@@ -2073,9 +2576,34 @@
                 log('Please select a slave first', 'err');
                 return;
             }
-            const speed = parseInt(document.getElementById('pvSpeed').value) * 1000;
+            const speed = Math.round(parseFloat(document.getElementById('pvSpeed').value) * 1000);
             sendCmd('velocity_backward', { slave: parseInt(slave), speed: speed });
             log(`Slave #${parseInt(slave) + 1} Backward: ${speed} units/s`, 'com');
+        }
+
+        // Position limit functions for loop tests
+        function applyLoopTestPosLimit() {
+            const limitChecked = document.getElementById('loopTestPosLimit').checked;
+            if (limitChecked) {
+                let pos1 = parseFloat(document.getElementById('loopTestPos1').value) || 0;
+                let pos2 = parseFloat(document.getElementById('loopTestPos2').value) || 0.04;
+                pos1 = Math.max(-0.01, Math.min(0.04, pos1));
+                pos2 = Math.max(-0.01, Math.min(0.04, pos2));
+                document.getElementById('loopTestPos1').value = pos1;
+                document.getElementById('loopTestPos2').value = pos2;
+            }
+        }
+
+        function applyMultiLoopPosLimit() {
+            const limitChecked = document.getElementById('multiLoopPosLimit').checked;
+            if (limitChecked) {
+                let pos1 = parseFloat(document.getElementById('multiLoopPos1').value) || 0;
+                let pos2 = parseFloat(document.getElementById('multiLoopPos2').value) || 0.04;
+                pos1 = Math.max(-0.01, Math.min(0.04, pos1));
+                pos2 = Math.max(-0.01, Math.min(0.04, pos2));
+                document.getElementById('multiLoopPos1').value = pos1;
+                document.getElementById('multiLoopPos2').value = pos2;
+            }
         }
 
         // Loop Test Functions
@@ -2086,8 +2614,11 @@
                 return;
             }
 
-            const pos1 = parseFloat(document.getElementById('loopTestPos1').value);
-            const pos2 = parseFloat(document.getElementById('loopTestPos2').value);
+            // Apply position limits if enabled
+            applyLoopTestPosLimit();
+
+            let pos1 = parseFloat(document.getElementById('loopTestPos1').value);
+            let pos2 = parseFloat(document.getElementById('loopTestPos2').value);
             const cycles = parseInt(document.getElementById('loopTestCycles').value) || 0;
             const startDelay = parseFloat(document.getElementById('loopTestStartDelay').value) || 0;
             const stopDelay = parseFloat(document.getElementById('loopTestStopDelay').value) || 0;
@@ -2103,8 +2634,8 @@
             }
 
             // Get PV speed from the speed block
-            const speedUnit = parseInt(document.getElementById('pvSpeed').value) || 50;
-            const velocity = speedUnit * 1000;
+            const speedUnit = parseFloat(document.getElementById('pvSpeed').value) || 1;
+            const velocity = Math.round(speedUnit * 1000);
 
             // Apply PV speed first
             applyPVSpeed();
@@ -2315,6 +2846,350 @@
             }
         }
 
+        // ============================================
+        // Multi-Slave Loop Test Functions
+        // ============================================
+
+        // Update multi-loop slave button grid
+        function updateMultiLoopSlaveGrid(count) {
+            const grid = document.getElementById('multiLoopSlaveGrid');
+            if (!grid) return;
+
+            // Check if count changed
+            const currentBtns = grid.querySelectorAll('.slave-btn');
+            if (currentBtns.length === count && count > 0) return;
+
+            let html = '';
+            for (let i = 0; i < count; i++) {
+                const isSelected = multiLoopSelectedSlaves.has(i);
+                html += `<button class="slave-btn ${isSelected ? 'selected' : ''}"
+                         data-slave="${i}"
+                         onclick="toggleMultiLoopSlave(${i})">#${i + 1}</button>`;
+            }
+            grid.innerHTML = html;
+
+            updateMultiLoopStartBtn();
+            updateMultiLoopMonitor();
+        }
+
+        // Toggle slave selection
+        function toggleMultiLoopSlave(idx) {
+            if (multiLoopRunning) return;  // Don't allow changes while running
+
+            if (multiLoopSelectedSlaves.has(idx)) {
+                multiLoopSelectedSlaves.delete(idx);
+            } else {
+                multiLoopSelectedSlaves.add(idx);
+            }
+
+            // Update button visual
+            const btn = document.querySelector(`.slave-btn[data-slave="${idx}"]`);
+            if (btn) {
+                btn.classList.toggle('selected', multiLoopSelectedSlaves.has(idx));
+            }
+
+            updateMultiLoopStartBtn();
+            updateMultiLoopMonitor();
+        }
+
+        // Select all slaves
+        function selectAllMultiLoopSlaves() {
+            if (multiLoopRunning) return;
+
+            const btns = document.querySelectorAll('#multiLoopSlaveGrid .slave-btn');
+            btns.forEach(btn => {
+                const idx = parseInt(btn.dataset.slave);
+                multiLoopSelectedSlaves.add(idx);
+                btn.classList.add('selected');
+            });
+
+            updateMultiLoopStartBtn();
+            updateMultiLoopMonitor();
+        }
+
+        // Deselect all slaves
+        function deselectAllMultiLoopSlaves() {
+            if (multiLoopRunning) return;
+
+            multiLoopSelectedSlaves.clear();
+            const btns = document.querySelectorAll('#multiLoopSlaveGrid .slave-btn');
+            btns.forEach(btn => btn.classList.remove('selected'));
+
+            updateMultiLoopStartBtn();
+            updateMultiLoopMonitor();
+        }
+
+        // Update multi-loop start button state
+        function updateMultiLoopStartBtn() {
+            const startBtn = document.getElementById('multiLoopStartBtn');
+            if (startBtn) {
+                startBtn.disabled = multiLoopSelectedSlaves.size === 0 || multiLoopRunning;
+            }
+        }
+
+        // Update multi-loop monitor display
+        // Shows: #1  wait  0:05 s  OR  #1  moving  0.0123 m
+        function updateMultiLoopMonitor(positions = null) {
+            const container = document.getElementById('multiLoopSlaveStatus');
+            if (!container) return;
+
+            if (multiLoopSelectedSlaves.size === 0) {
+                container.innerHTML = '<div style="color: var(--text-secondary); font-size: 0.75rem; text-align: center;">Select slaves to monitor</div>';
+                return;
+            }
+
+            let html = '';
+            const sortedSlaves = Array.from(multiLoopSelectedSlaves).sort((a, b) => a - b);
+
+            sortedSlaves.forEach(idx => {
+                const status = multiLoopSlaveStatus[idx] || 'idle';
+                const statusColors = {
+                    'idle': 'var(--text-secondary)',
+                    'moving': 'var(--accent-blue)',
+                    'wait': 'var(--text-gold)',
+                    'done': 'var(--accent-green)'
+                };
+                const statusLabels = {
+                    'idle': 'Idle',
+                    'moving': 'Moving',
+                    'wait': 'Wait',
+                    'done': 'Done'
+                };
+
+                // Determine what to show in the value column
+                let valueText = '---';
+                let valueColor = 'var(--text-secondary)';
+
+                if (status === 'wait' && multiLoopSlaveDelay[idx]) {
+                    // Show delay countdown
+                    const delayInfo = multiLoopSlaveDelay[idx];
+                    const elapsed = (Date.now() - delayInfo.start) / 1000;
+                    const remaining = Math.max(0, delayInfo.duration - elapsed);
+                    valueText = `${remaining.toFixed(1)} s`;
+                    valueColor = 'var(--text-gold)';
+                } else if (status === 'moving' && positions && positions[idx] !== undefined) {
+                    // Show position
+                    valueText = `${positions[idx].toFixed(4)} m`;
+                    valueColor = 'var(--accent-green)';
+                } else if (status === 'done') {
+                    valueText = 'Done';
+                    valueColor = 'var(--accent-green)';
+                }
+
+                html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; margin-bottom: 4px; background: var(--bg-card); border-radius: 4px; border-left: 3px solid ${statusColors[status]};">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-weight: 600; color: var(--accent-purple);">#${idx + 1}</span>
+                        <span style="font-size: 0.75rem; color: ${statusColors[status]}; min-width: 50px;">${statusLabels[status]}</span>
+                    </div>
+                    <div style="font-family: 'Courier New', monospace; font-size: 0.85rem; font-weight: 600; color: ${valueColor};">${valueText}</div>
+                </div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        // Start delay countdown for a slave
+        function startMultiLoopSlaveDelay(slaveIdx, durationSeconds) {
+            multiLoopSlaveDelay[slaveIdx] = {
+                start: Date.now(),
+                duration: durationSeconds
+            };
+        }
+
+        // Clear delay for a slave
+        function clearMultiLoopSlaveDelay(slaveIdx) {
+            delete multiLoopSlaveDelay[slaveIdx];
+        }
+
+        // Start multi-loop delay update interval
+        function startMultiLoopDelayUpdates() {
+            if (multiLoopDelayInterval) clearInterval(multiLoopDelayInterval);
+            multiLoopDelayInterval = setInterval(() => {
+                if (multiLoopRunning) {
+                    updateMultiLoopMonitor();
+                }
+            }, 100);  // Update every 100ms for smooth countdown
+        }
+
+        // Stop multi-loop delay updates
+        function stopMultiLoopDelayUpdates() {
+            if (multiLoopDelayInterval) {
+                clearInterval(multiLoopDelayInterval);
+                multiLoopDelayInterval = null;
+            }
+            multiLoopSlaveDelay = {};
+        }
+
+        // Start multi-slave loop test
+        function startMultiLoopTest() {
+            if (multiLoopSelectedSlaves.size === 0) {
+                log('Please select at least one slave', 'err');
+                return;
+            }
+
+            // Apply position limits if enabled
+            applyMultiLoopPosLimit();
+
+            const pos1 = parseFloat(document.getElementById('multiLoopPos1').value);
+            const pos2 = parseFloat(document.getElementById('multiLoopPos2').value);
+            const cycles = parseInt(document.getElementById('multiLoopCycles').value) || 0;
+            const startDelay = parseFloat(document.getElementById('multiLoopStartDelay').value) || 0;
+            const stopDelay = parseFloat(document.getElementById('multiLoopStopDelay').value) || 0;
+
+            if (pos1 === pos2) {
+                log('Position 1 and Position 2 must be different', 'err');
+                return;
+            }
+
+            // Get current velocity from UI
+            const speed = Math.round(parseFloat(document.getElementById('pvSpeed').value) * 1000);
+
+            multiLoopRunning = true;
+
+            // Initialize slave status
+            multiLoopSelectedSlaves.forEach(idx => {
+                multiLoopSlaveStatus[idx] = 'idle';
+            });
+
+            // Update UI
+            document.getElementById('multiLoopStartBtn').disabled = true;
+            document.getElementById('multiLoopStopBtn').disabled = false;
+            document.getElementById('multiLoopCycleDisplay').style.display = 'block';
+            document.getElementById('multiLoopCurrentCycle').textContent = '0';
+            document.getElementById('multiLoopTotalCycles').textContent = cycles === 0 ? '∞' : cycles;
+
+            // Disable slave buttons during test
+            document.querySelectorAll('#multiLoopSlaveGrid .slave-btn').forEach(btn => {
+                btn.style.pointerEvents = 'none';
+                btn.style.opacity = '0.7';
+            });
+
+            // Start delay update interval
+            startMultiLoopDelayUpdates();
+
+            updateMultiLoopMonitor();
+
+            log(`Multi-Slave Loop Test started: ${multiLoopSelectedSlaves.size} slaves, Pos1=${pos1}m, Pos2=${pos2}m`, 'com');
+
+            sendCmd('multi_loop_test_start', {
+                slaves: Array.from(multiLoopSelectedSlaves),
+                pos1: pos1,
+                pos2: pos2,
+                cycles: cycles,
+                speed: speed,
+                start_delay: startDelay,
+                stop_delay: stopDelay
+            });
+        }
+
+        // Stop multi-slave loop test
+        function stopMultiLoopTest() {
+            multiLoopRunning = false;
+
+            // Stop delay updates
+            stopMultiLoopDelayUpdates();
+
+            // Stop all selected slaves
+            sendCmd('multi_loop_test_stop');
+
+            // Update UI
+            document.getElementById('multiLoopStartBtn').disabled = false;
+            document.getElementById('multiLoopStopBtn').disabled = true;
+
+            // Re-enable slave buttons
+            document.querySelectorAll('#multiLoopSlaveGrid .slave-btn').forEach(btn => {
+                btn.style.pointerEvents = 'auto';
+                btn.style.opacity = '1';
+            });
+
+            // Reset status
+            multiLoopSelectedSlaves.forEach(idx => {
+                multiLoopSlaveStatus[idx] = 'idle';
+            });
+            updateMultiLoopMonitor();
+
+            log('Multi-Slave Loop Test stopped', 'sys');
+        }
+
+        // Handle multi-loop test updates from backend
+        function handleMultiLoopTestUpdate(data) {
+            const status = data.status;
+            console.log('[Multi-Loop Test] Status update:', status, data);
+
+            if (status === 'started') {
+                multiLoopRunning = true;
+                document.getElementById('multiLoopCurrentCycle').textContent = '0';
+                document.getElementById('multiLoopTotalCycles').textContent = data.cycles === 0 ? '∞' : data.cycles;
+            }
+            else if (status === 'cycle_update') {
+                document.getElementById('multiLoopCurrentCycle').textContent = data.current_cycle || 0;
+            }
+            else if (status === 'slave_status') {
+                // Update individual slave status
+                if (data.slave !== undefined && data.slave_status) {
+                    const slaveIdx = data.slave;
+                    multiLoopSlaveStatus[slaveIdx] = data.slave_status;
+
+                    // Handle delay timing
+                    if (data.slave_status === 'wait' && data.delay_duration !== undefined) {
+                        startMultiLoopSlaveDelay(slaveIdx, data.delay_duration);
+                    } else {
+                        clearMultiLoopSlaveDelay(slaveIdx);
+                    }
+                    updateMultiLoopMonitor();
+                }
+            }
+            else if (status === 'all_status') {
+                // Update all slave statuses
+                if (data.slave_statuses) {
+                    const hasWait = Object.values(data.slave_statuses).some(st => st === 'wait');
+
+                    Object.entries(data.slave_statuses).forEach(([idx, st]) => {
+                        const slaveIdx = parseInt(idx);
+                        multiLoopSlaveStatus[slaveIdx] = st;
+
+                        // Handle delay timing for wait status
+                        if (st === 'wait' && data.delay_duration !== undefined) {
+                            startMultiLoopSlaveDelay(slaveIdx, data.delay_duration);
+                        } else if (st !== 'wait') {
+                            clearMultiLoopSlaveDelay(slaveIdx);
+                        }
+                    });
+                    updateMultiLoopMonitor();
+                }
+                if (data.current_cycle !== undefined) {
+                    document.getElementById('multiLoopCurrentCycle').textContent = data.current_cycle;
+                }
+            }
+            else if (status === 'stopped' || status === 'completed') {
+                multiLoopRunning = false;
+
+                // Stop delay updates
+                stopMultiLoopDelayUpdates();
+
+                document.getElementById('multiLoopStartBtn').disabled = false;
+                document.getElementById('multiLoopStopBtn').disabled = true;
+
+                // Re-enable slave buttons
+                document.querySelectorAll('#multiLoopSlaveGrid .slave-btn').forEach(btn => {
+                    btn.style.pointerEvents = 'auto';
+                    btn.style.opacity = '1';
+                });
+
+                // Mark all as done
+                multiLoopSelectedSlaves.forEach(idx => {
+                    multiLoopSlaveStatus[idx] = 'done';
+                });
+                updateMultiLoopMonitor();
+
+                if (status === 'completed') {
+                    document.getElementById('multiLoopCurrentCycle').textContent = data.total_cycles || '?';
+                    log(`Multi-Slave Loop Test complete: ${data.total_cycles} cycles`, 'sys');
+                } else {
+                    log(`Multi-Slave Loop Test stopped at cycle ${data.current_cycle || '?'}`, 'sys');
+                }
+            }
+        }
+
         // Homing functions
         function setHome() {
             const slave = document.getElementById('homeSlaveSelect').value;
@@ -2344,9 +3219,11 @@
 
         // Speed functions
         function updatePPEffective() {
-            const speed = parseInt(document.getElementById('ppSpeed').value) || 80;
-            document.getElementById('ppEffectiveVel').textContent = (speed * 1000).toLocaleString();
-            document.getElementById('ppEffectiveAccel').textContent = (speed * 500).toLocaleString();
+            const speed = parseFloat(document.getElementById('ppSpeed').value) || 80;
+            const velocity = Math.round(speed * 1000);
+            const accel = Math.round(speed * 500);
+            document.getElementById('ppEffectiveVel').textContent = velocity.toLocaleString();
+            document.getElementById('ppEffectiveAccel').textContent = accel.toLocaleString();
         }
 
         function updateCSPEffective() {
@@ -2354,16 +3231,39 @@
             document.getElementById('cspEffectiveVel').textContent = (maxStep * 1000).toLocaleString();
         }
 
-        function updatePVEffective() {
-            const speed = parseInt(document.getElementById('pvSpeed').value) || 50;
-            document.getElementById('pvEffectiveVel').textContent = (speed * 1000).toLocaleString();
-            document.getElementById('pvEffectiveAccel').textContent = (speed * 500).toLocaleString();
+        function updatePVEffective(applyLimit = false) {
+            const input = document.getElementById('pvSpeed');
+            const limitChecked = document.getElementById('pvSpeedLimit').checked;
+            let speed = parseFloat(input.value);
+
+            // Handle empty or invalid input
+            if (isNaN(speed)) {
+                speed = 1;
+            }
+
+            // Only apply limit when explicitly requested (on blur) or checkbox changed
+            if (applyLimit && limitChecked) {
+                if (speed < 0) speed = 0;
+                if (speed > 5) speed = 5;
+                input.value = speed;
+            }
+
+            // For display, use clamped value if limit is checked
+            let displaySpeed = speed;
+            if (limitChecked) {
+                displaySpeed = Math.max(0, Math.min(5, speed));
+            }
+
+            const velocity = Math.round(displaySpeed * 1000);
+            const accel = Math.round(displaySpeed * 500);
+            document.getElementById('pvEffectiveVel').textContent = velocity.toLocaleString();
+            document.getElementById('pvEffectiveAccel').textContent = accel.toLocaleString();
         }
 
         function applyPPSpeed() {
-            const speedUnit = parseInt(document.getElementById('ppSpeed').value) || 80;
-            const velocity = speedUnit * 1000;
-            const acceleration = velocity / 2;
+            const speedUnit = parseFloat(document.getElementById('ppSpeed').value) || 80;
+            const velocity = Math.round(speedUnit * 1000);
+            const acceleration = Math.round(velocity / 2);
             sendCmd('set_speed', { velocity: velocity, acceleration: acceleration, deceleration: acceleration });
             log(`PP Speed applied: Vel=${velocity}, Accel=${acceleration}`, 'sys');
         }
@@ -2375,9 +3275,18 @@
         }
 
         function applyPVSpeed() {
-            const speedUnit = parseInt(document.getElementById('pvSpeed').value) || 50;
-            const velocity = speedUnit * 1000;
-            const acceleration = velocity / 2;
+            const limitChecked = document.getElementById('pvSpeedLimit').checked;
+            let speedUnit = parseFloat(document.getElementById('pvSpeed').value) || 1;
+
+            // Apply limit if checkbox is checked
+            if (limitChecked) {
+                if (speedUnit < 0) speedUnit = 0;
+                if (speedUnit > 5) speedUnit = 5;
+                document.getElementById('pvSpeed').value = speedUnit;
+            }
+
+            const velocity = Math.round(speedUnit * 1000);
+            const acceleration = Math.round(velocity / 2);
             sendCmd('set_speed', { velocity: velocity, acceleration: acceleration, deceleration: acceleration });
             log(`PV Speed applied: Vel=${velocity}, Accel=${acceleration}`, 'sys');
         }

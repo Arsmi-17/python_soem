@@ -150,7 +150,8 @@ async def broadcast_status():
                                 resp_data.get('config_files') or
                                 resp_data.get('config') or
                                 resp_data.get('template') or
-                                resp_data.get('loop_test')
+                                resp_data.get('loop_test') or
+                                resp_data.get('multi_loop_test')
                             )
                             if is_async_event:
                                 print(f"[broadcast] Broadcasting async event: {resp.get('message', 'unknown')}")
@@ -271,6 +272,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 motor.send_command('loop_test_start', cmd_data)
             elif cmd == 'loop_test_stop':
                 motor.send_command('loop_test_stop', cmd_data)
+            elif cmd == 'multi_loop_test_start':
+                motor.send_command('multi_loop_test_start', cmd_data)
+            elif cmd == 'multi_loop_test_stop':
+                motor.send_command('multi_loop_test_stop', cmd_data)
             elif cmd == 'clear_event':
                 motor.clear_event()
             elif cmd == 'quit':
@@ -316,7 +321,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 os._exit(0)  # Force exit the entire process
 
             # Check for response (increase timeout for file operations and loop test)
-            timeout = 2.0 if cmd in ['load_config', 'list_configs', 'loop_test_start'] else 0.5
+            timeout = 2.0 if cmd in ['load_config', 'list_configs', 'loop_test_start', 'multi_loop_test_start'] else 0.5
             resp = motor.get_response(timeout=timeout)
             if resp:
                 print(f"[web_server] Response for {cmd}: {resp.get('message', 'no message')}")

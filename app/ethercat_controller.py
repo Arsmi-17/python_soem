@@ -120,6 +120,9 @@ class EtherCATController:
         self._slave_accel = {}
         self._slave_decel = {}
 
+        # Per-slave PV mode target velocity (for PDO-based velocity control)
+        self._target_velocity = {}  # Target velocity per slave for PV mode
+
         # Slave connection monitoring
         self._last_slave_count = 0
         self._slaves_changed_callback = None
@@ -221,6 +224,7 @@ class EtherCATController:
                 # Initialize state
                 self._control_word[i] = 0
                 self._target_position[i] = 0
+                self._target_velocity[i] = 0  # For PV mode
                 self._cached_input[i] = bytes()
                 self._trajectory_active[i] = False
                 self._trajectory_target[i] = 0
@@ -484,9 +488,9 @@ class EtherCATController:
         else:
             # PP and PV modes - drive handles trajectory, we just need status updates
             cycle_time_sec = 0.005  # 5ms cycle is fine for PP/PV
-            max_allowed_cycle_ms = 15.0  # More relaxed warning threshold
-            watchdog_threshold_ms = 20.0  # More relaxed critical threshold
-            print(f"[PDO] PP/PV mode: Using 5ms cycle time, relaxed timing")
+            max_allowed_cycle_ms = 50.0  # Very relaxed warning threshold - PP/PV handles timing internally
+            watchdog_threshold_ms = 100.0  # Very relaxed critical threshold - only trigger on real issues
+            print(f"[PDO] PP/PV mode: Using 5ms cycle time, very relaxed timing (50ms warn, 100ms critical)")
 
         late_cycle_count = 0
         last_late_warning = 0
@@ -526,8 +530,8 @@ class EtherCATController:
                             print(f"[PDO CRITICAL] Gap {cycle_gap_ms:.1f}ms approaching watchdog timeout!")
 
                     # Only trigger recovery after many consecutive late cycles
-                    # PP/PV modes need more tolerance
-                    recovery_threshold = 20 if self.mode == self.MODE_CSP else 50
+                    # PP/PV modes need much more tolerance since timing is less critical
+                    recovery_threshold = 20 if self.mode == self.MODE_CSP else 200
                     if consecutive_late_cycles >= recovery_threshold and cycle_gap_ms > watchdog_threshold_ms and self._communication_error_callback:
                         print(f"[PDO CRITICAL] {consecutive_late_cycles} consecutive late cycles - triggering recovery!")
                         consecutive_late_cycles = 0
@@ -550,17 +554,22 @@ class EtherCATController:
                         # Check working counter for slave disconnect detection
                         if wkc < self.slaves_count:
                             consecutive_wkc_failures += 1
-                            if consecutive_wkc_failures > 100:  # Reduced from 500 for faster detection
+                            # Use different thresholds for CSP vs PP/PV
+                            # PP/PV modes are more tolerant of occasional WKC issues
+                            wkc_error_threshold = 200 if self.mode == self.MODE_CSP else 500
+                            wkc_disconnect_threshold = 1000 if self.mode == self.MODE_CSP else 2000
+
+                            if consecutive_wkc_failures > wkc_error_threshold:
                                 # Check if this is a communication error (Er81b)
-                                if self._communication_error_callback and consecutive_wkc_failures == 101:
-                                    print(f"[PDO ERROR] WKC mismatch: {wkc}/{self.slaves_count} - possible Er81b")
+                                if self._communication_error_callback and consecutive_wkc_failures == wkc_error_threshold + 1:
+                                    print(f"[PDO ERROR] WKC mismatch: {wkc}/{self.slaves_count} - possible Er81b (after {wkc_error_threshold} failures)")
                                     threading.Thread(
                                         target=self._communication_error_callback,
                                         args=(f"WKC mismatch: {wkc}/{self.slaves_count}",),
                                         daemon=True
                                     ).start()
 
-                                if consecutive_wkc_failures > 500 and self._slaves_changed_callback:
+                                if consecutive_wkc_failures > wkc_disconnect_threshold and self._slaves_changed_callback:
                                     consecutive_wkc_failures = 0
                                     threading.Thread(
                                         target=self._slaves_changed_callback,
@@ -599,12 +608,13 @@ class EtherCATController:
                             # else: PP mode - target position is set by move_to_position()
                             #       Drive generates trajectory, we just send target position as-is
 
-                            # Pack output data
+                            # Pack output data (same for all modes - PDO uses target position)
+                            # Note: PV mode velocity is set via SDO (0x60FF), not PDO
                             out_data = bytearray(out_len)
                             struct.pack_into('<H', out_data, 0, self._control_word.get(i, 0))
                             struct.pack_into('<i', out_data, 2, self._target_position.get(i, 0))
                             if out_len >= 7:
-                                out_data[6] = self.mode  # Mode byte = actual mode (1 for PP, 8 for CSP)
+                                out_data[6] = self.mode  # Mode byte = actual mode (1 for PP, 3 for PV, 8 for CSP)
                             slave.output = bytes(out_data)
 
                 except Exception as e:
@@ -971,16 +981,9 @@ class EtherCATController:
             return 0
 
     def has_fault(self, idx):
-        """Check if drive has fault and read error code"""
+        """Check if drive has fault (uses cached PDO status - fast, no SDO)"""
         status = self.read_status(idx)
-        has_fault = bool(status & self.STATUS_FAULT)
-        
-        if has_fault:
-            # Read actual error code when fault detected
-            error_code = self.read_error_code_sdo(idx)
-            return True
-        
-        return False
+        return bool(status & self.STATUS_FAULT)
 
 
     def stop_motion(self, idx):
@@ -1052,8 +1055,9 @@ class EtherCATController:
 
         # Mode-specific immediate stop
         if self.mode == self.MODE_PV:
-            # PV mode: Set velocity to 0 for all slaves
+            # PV mode: Set velocity to 0 for all slaves via SDO
             for i in range(self.slaves_count):
+                self._target_velocity[i] = 0
                 try:
                     slave = self.master.slaves[i]
                     slave.sdo_write(0x60FF, 0x00, (0).to_bytes(4, 'little', signed=True))
@@ -1798,43 +1802,38 @@ class EtherCATController:
         """
         Set target velocity for PV (Profile Velocity) mode
         Positive = forward, Negative = backward, 0 = stop
+
+        Uses SDO to write target velocity (0x60FF)
         """
         if idx >= self.slaves_count:
             return False
-        
-        print(f"  [PV] Slave {idx}: Setting target velocity = {velocity}")
-        
+
+        self._target_velocity[idx] = int(velocity)
+
         slave = self.master.slaves[idx]
         try:
-            # Write target velocity to 0x60FF
-            slave.sdo_write(0x60FF, 0x00, velocity.to_bytes(4, 'little', signed=True))
+            # Write target velocity to 0x60FF via SDO
+            slave.sdo_write(0x60FF, 0x00, int(velocity).to_bytes(4, 'little', signed=True))
             return True
         except Exception as e:
-            print(f"  Error setting velocity: {e}")
+            print(f"  [PV] Error setting velocity for slave {idx}: {e}")
             return False
     
     def velocity_forward(self, idx, speed=None):
         """Move forward in PV mode"""
         if speed is None:
             speed = self._velocity
-        print(f"\n  [PV Mode] Slave {idx}: Forward at {speed} units/s")
         self.set_target_velocity(idx, speed)
-    
+
     def velocity_backward(self, idx, speed=None):
         """Move backward in PV mode"""
         if speed is None:
             speed = self._velocity
-        print(f"\n  [PV Mode] Slave {idx}: Backward at {-speed} units/s")
         self.set_target_velocity(idx, -speed)
-    
+
     def velocity_stop(self, idx):
         """Stop in PV mode - stays enabled"""
-        print(f"\n  [PV Mode] Slave {idx}: STOP")
-
-        # Set velocity to 0 immediately
         self.set_target_velocity(idx, 0)
-
-        print(f"  Slave {idx} STOPPED (still enabled)")
 
     def clear_alarm_controlword(self, idx):
         """
