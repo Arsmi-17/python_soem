@@ -14,8 +14,8 @@
     },
     "positions": {
         "home_pos_M": [0],
-        "pos_1": [-1],
-        "pos_2": [-0.5]
+        "pos_1": [1],
+        "pos_2": [0.5]
     },
     "template": {
         "name": "Movement + Rotation Sequence",

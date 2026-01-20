@@ -1317,13 +1317,13 @@
                                 </div>
                                 <div>
                                     <div class="config-label">Position 2 (m):</div>
-                                    <input type="number" id="loopTestPos2" value="0.04" step="0.01" style="margin: 0;">
+                                    <input type="number" id="loopTestPos2" value="0.03" step="0.01" style="margin: 0;">
                                 </div>
                             </div>
                             <!-- Position Limit Checkbox -->
                             <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
                                 <input type="checkbox" id="loopTestPosLimit" checked onchange="applyLoopTestPosLimit()">
-                                <label for="loopTestPosLimit" style="font-size: 0.75rem; color: var(--text-secondary);">Limit position (-0.01 to 0.04)</label>
+                                <label for="loopTestPosLimit" style="font-size: 0.75rem; color: var(--text-secondary);">Limit position (0 to 0.035)</label>
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                                 <div>
@@ -1377,13 +1377,13 @@
                                         </div>
                                         <div>
                                             <div class="config-label">Position 2 (m):</div>
-                                            <input type="number" id="multiLoopPos2" value="0.04" step="0.01" style="margin: 0;">
+                                            <input type="number" id="multiLoopPos2" value="0.03" step="0.01" style="margin: 0;">
                                         </div>
                                     </div>
                                     <!-- Position Limit Checkbox -->
                                     <div style="display: flex; align-items: center; gap: 6px;">
                                         <input type="checkbox" id="multiLoopPosLimit" checked onchange="applyMultiLoopPosLimit()">
-                                        <label for="multiLoopPosLimit" style="font-size: 0.75rem; color: var(--text-secondary);">Limit position (-0.01 to 0.04)</label>
+                                        <label for="multiLoopPosLimit" style="font-size: 0.75rem; color: var(--text-secondary);">Limit position (0 to 0.035)</label>
                                     </div>
                                     <!-- Delay Inputs -->
                                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
@@ -2586,9 +2586,9 @@
             const limitChecked = document.getElementById('loopTestPosLimit').checked;
             if (limitChecked) {
                 let pos1 = parseFloat(document.getElementById('loopTestPos1').value) || 0;
-                let pos2 = parseFloat(document.getElementById('loopTestPos2').value) || 0.04;
-                pos1 = Math.max(-0.01, Math.min(0.04, pos1));
-                pos2 = Math.max(-0.01, Math.min(0.04, pos2));
+                let pos2 = parseFloat(document.getElementById('loopTestPos2').value) || 0.035;
+                pos1 = Math.max(0, Math.min(0.035, pos1));
+                pos2 = Math.max(0, Math.min(0.035, pos2));
                 document.getElementById('loopTestPos1').value = pos1;
                 document.getElementById('loopTestPos2').value = pos2;
             }
@@ -2598,9 +2598,9 @@
             const limitChecked = document.getElementById('multiLoopPosLimit').checked;
             if (limitChecked) {
                 let pos1 = parseFloat(document.getElementById('multiLoopPos1').value) || 0;
-                let pos2 = parseFloat(document.getElementById('multiLoopPos2').value) || 0.04;
-                pos1 = Math.max(-0.01, Math.min(0.04, pos1));
-                pos2 = Math.max(-0.01, Math.min(0.04, pos2));
+                let pos2 = parseFloat(document.getElementById('multiLoopPos2').value) || 0.035;
+                pos1 = Math.max(0, Math.min(0.035, pos1));
+                pos2 = Math.max(0, Math.min(0.035, pos2));
                 document.getElementById('multiLoopPos1').value = pos1;
                 document.getElementById('multiLoopPos2').value = pos2;
             }
@@ -2722,7 +2722,10 @@
             if (actionEl) {
                 actionEl.textContent = action;
                 // Color based on action type
-                if (action.includes('Moving') || action.includes('Forward') || action.includes('Backward')) {
+                if (action.includes('Homing')) {
+                    actionEl.style.color = 'var(--accent-purple)';
+                    valueEl.style.color = 'var(--accent-green)';
+                } else if (action.includes('Moving') || action.includes('Forward') || action.includes('Backward')) {
                     actionEl.style.color = 'var(--accent-blue)';
                     valueEl.style.color = 'var(--accent-green)';
                 } else if (action.includes('Wait')) {
@@ -2800,6 +2803,11 @@
                 document.getElementById('loopTestStopBtn').disabled = false;
                 updateLoopTestStatus('Starting', 0);
                 updateLoopTestLiveDisplay('Starting...', '---', 0, loopTestTargetCycles);
+            }
+            else if (status === 'homing') {
+                loopTestCurrentCycle = 0;
+                updateLoopTestStatus('Homing (pos1)', 0);
+                updateLoopTestLiveDisplay('Homing (pos1)', '---', 0, loopTestTargetCycles);
             }
             else if (status === 'start_delay') {
                 loopTestCurrentCycle = data.current_cycle || loopTestCurrentCycle;
@@ -2946,12 +2954,14 @@
                 const statusColors = {
                     'idle': 'var(--text-secondary)',
                     'moving': 'var(--accent-blue)',
+                    'homing': 'var(--accent-purple)',
                     'wait': 'var(--text-gold)',
                     'done': 'var(--accent-green)'
                 };
                 const statusLabels = {
                     'idle': 'Idle',
                     'moving': 'Moving',
+                    'homing': 'Homing',
                     'wait': 'Wait',
                     'done': 'Done'
                 };
@@ -2967,7 +2977,7 @@
                     const remaining = Math.max(0, delayInfo.duration - elapsed);
                     valueText = `${remaining.toFixed(1)} s`;
                     valueColor = 'var(--text-gold)';
-                } else if (status === 'moving' && positions && positions[idx] !== undefined) {
+                } else if ((status === 'moving' || status === 'homing') && positions && positions[idx] !== undefined) {
                     // Show position
                     valueText = `${positions[idx].toFixed(4)} m`;
                     valueColor = 'var(--accent-green)';

@@ -1835,6 +1835,21 @@ class EtherCATController:
         """Stop in PV mode - stays enabled"""
         self.set_target_velocity(idx, 0)
 
+    def set_max_accel_decel(self, idx):
+        """Set maximum acceleration/deceleration for instant stop (no ramp)"""
+        if idx >= self.slaves_count:
+            return False
+        slave = self.master.slaves[idx]
+        try:
+            max_val = 0x7FFFFFFF  # Maximum 32-bit value for instant accel/decel
+            slave.sdo_write(0x6083, 0x00, max_val.to_bytes(4, 'little', signed=False))  # Acceleration
+            slave.sdo_write(0x6084, 0x00, max_val.to_bytes(4, 'little', signed=False))  # Deceleration
+            print(f"  [PV] Slave {idx}: Set max accel/decel for instant stop")
+            return True
+        except Exception as e:
+            print(f"  [PV] Error setting max accel/decel for slave {idx}: {e}")
+            return False
+
     def clear_alarm_controlword(self, idx):
         """
         Clear alarm by writing 0x80 (fault reset) to controlword 0x6040
