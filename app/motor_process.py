@@ -1087,7 +1087,10 @@ class MotorProcess:
 
                 # Check stop flag
                 if shared_stop.value == 1:
-                    print("    [STOPPED] Motion interrupted during wait")
+                    print("    [STOPPED] Motion interrupted during wait - stopping all slaves")
+                    for idx in slave_indices:
+                        if idx < ec.slaves_count:
+                            ec.stop_motion(idx)
                     return False
 
                 # Update positions in shared memory and send OSC movement messages

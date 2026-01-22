@@ -1004,36 +1004,44 @@ class EtherCATController:
             # PV mode: Set velocity to 0 immediately
             self.set_target_velocity(idx, 0)
         elif self.mode == self.MODE_PP:
-            # PP mode: Set MAXIMUM deceleration for instant stop, then use HALT
-            try:
-                slave = self.master.slaves[idx]
-                # Set deceleration to maximum (0x7FFFFFFF = max int32)
-                slave.sdo_write(0x6084, 0x00, (0x7FFFFFFF).to_bytes(4, 'little', signed=False))
-            except:
-                pass
+            # PP mode: Use HALT bit and set max deceleration for immediate stop
+            slave = self.master.slaves[idx]
 
-            # Use HALT bit to stop
+            # Step 1: Set MAXIMUM deceleration for instant stop
+            try:
+                slave.sdo_write(0x6084, 0x00, (0x7FFFFFFF).to_bytes(4, 'little', signed=False))
+            except Exception as e:
+                print(f"  [PP STOP] Failed to set max decel: {e}")
+
+            # Step 2: Set HALT bit to stop motion
             with self._pdo_lock:
                 self._control_word[idx] = self.CONTROL_ENABLE_OP | self.CONTROL_HALT
 
-            time.sleep(0.002)
+            # Step 3: Wait for motion to actually stop (check velocity or wait longer)
+            time.sleep(0.05)  # 50ms to ensure halt takes effect
 
-            # Update target to current position
+            # Step 4: Update target to current ACTUAL position
             actual_pos = self._get_pos_scaled_internal(idx)
             with self._pdo_lock:
                 self._target_position[idx] = actual_pos
-                # Clear HALT and send new setpoint at current position
+
+            # Step 5: Clear HALT and set new setpoint at stopped position
+            with self._pdo_lock:
                 self._control_word[idx] = self.CONTROL_ENABLE_OP | self.CONTROL_NEW_SETPOINT
 
-            time.sleep(0.002)
+            time.sleep(0.01)
+
+            # Step 6: Clear new setpoint bit
             with self._pdo_lock:
                 self._control_word[idx] = self.CONTROL_ENABLE_OP
 
-            # Restore original deceleration
+            # Step 7: Restore original deceleration
             try:
                 slave.sdo_write(0x6084, 0x00, self._decel.to_bytes(4, 'little', signed=False))
             except:
                 pass
+
+            print(f"  [PP STOP] Slave {idx} halted at {actual_pos}")
         # CSP mode: target already synced above, PDO loop will hold position
 
         print(f"  Slave {idx} STOPPED at position: {actual_pos}")
