@@ -75,7 +75,9 @@ class MotorProcess:
         self.shared_osc_connected = Value(ctypes.c_int, 0)  # 0=disconnected, 1=connected
         self.shared_osc_mode = Value(ctypes.c_int, 0)  # 0=off, 1=receive, 2=send, 3=both
         self.shared_osc_ip = Array(ctypes.c_char, 64)
-        self.shared_osc_port = Value(ctypes.c_int, 8000)
+        self.shared_osc_port = Value(ctypes.c_int, 8001)
+        self.shared_osc_send_movement = Value(ctypes.c_int, 0)  # 0=disabled, 1=enabled (default false)
+        self.shared_osc_send_template = Value(ctypes.c_int, 1)  # 0=disabled, 1=enabled (default true)
 
         # Event tracking for UI notifications
         self.shared_event_type = Value(ctypes.c_int, 0)  # 0=none, 1=slave_change, 2=error, 3=info
@@ -120,7 +122,9 @@ class MotorProcess:
                 self.shared_osc_connected,
                 self.shared_osc_mode,
                 self.shared_osc_ip,
-                self.shared_osc_port
+                self.shared_osc_port,
+                self.shared_osc_send_movement,
+                self.shared_osc_send_template
             )
         )
         self.process.start()
@@ -242,7 +246,8 @@ class MotorProcess:
                      shared_moving, shared_num_slaves, shared_mode, shared_interface, shared_stop, running,
                      shared_udp_connected, shared_udp_ip, shared_udp_port,
                      shared_event_type, shared_event_slave, shared_event_code, shared_event_msg, shared_event_counter,
-                     shared_osc_connected, shared_osc_mode, shared_osc_ip, shared_osc_port):
+                     shared_osc_connected, shared_osc_mode, shared_osc_ip, shared_osc_port,
+                     shared_osc_send_movement, shared_osc_send_template):
         """Main process loop"""
         import pysoem
 
@@ -590,11 +595,13 @@ class MotorProcess:
 
         def osc_send_template_step(step_index):
             """Send OSC message when template step starts: /template_step with step_no as argument"""
-            osc_send("/template_step", step_index)
+            if shared_osc_connected.value == 1 and shared_osc_send_template.value == 1:
+                osc_send("/template_step", step_index)
 
         def osc_send_template_complete():
             """Send OSC message when template completes: /template_complete"""
-            osc_send("/template_complete")
+            if shared_osc_connected.value == 1 and shared_osc_send_template.value == 1:
+                osc_send("/template_complete")
 
         def parse_osc_message(data):
             """
@@ -1009,8 +1016,8 @@ class MotorProcess:
                         except:
                             pass  # Keep previous error code if read fails
 
-                    # Send OSC movement message if enabled and requested
-                    if send_osc_movement and shared_osc_connected.value == 1:
+                    # Send OSC movement message if enabled, requested, AND movement sending is checked
+                    if send_osc_movement and shared_osc_connected.value == 1 and shared_osc_send_movement.value == 1:
                         osc_send_movement(i, pos_meters)
 
                 shared_mode.value = ec.mode
@@ -1681,14 +1688,19 @@ class MotorProcess:
                             osc_send_ip = data.get('send_ip', '127.0.0.1')
                             osc_send_port = data.get('send_port', 9000)
                             osc_recv_ip = data.get('recv_ip', '0.0.0.0')
-                            osc_recv_port = data.get('recv_port', data.get('port', 8000))
+                            osc_recv_port = data.get('recv_port', data.get('port', 8001))
                             osc_mode = data.get('mode', OSC_MODE_BOTH)  # 1=recv, 2=send, 3=both
+                            # OSC send settings (which addresses to send)
+                            osc_send_movement_enabled = data.get('send_movement', False)
+                            osc_send_template_enabled = data.get('send_template', True)
                         else:
                             osc_send_ip = '127.0.0.1'
                             osc_send_port = 9000
                             osc_recv_ip = '0.0.0.0'
-                            osc_recv_port = 8000
+                            osc_recv_port = 8001
                             osc_mode = OSC_MODE_BOTH
+                            osc_send_movement_enabled = False
+                            osc_send_template_enabled = True
 
                         if isinstance(osc_send_port, str):
                             osc_send_port = int(osc_send_port)
@@ -1697,7 +1709,12 @@ class MotorProcess:
                         if isinstance(osc_mode, str):
                             osc_mode = int(osc_mode)
 
+                        # Store send settings in shared memory
+                        shared_osc_send_movement.value = 1 if osc_send_movement_enabled else 0
+                        shared_osc_send_template.value = 1 if osc_send_template_enabled else 0
+
                         print(f"\n[OSC] Starting OSC (mode={osc_mode}, send={osc_send_ip}:{osc_send_port}, recv={osc_recv_ip}:{osc_recv_port})")
+                        print(f"[OSC] Send settings: movement={osc_send_movement_enabled}, template={osc_send_template_enabled}")
                         start_osc(osc_mode, osc_send_ip, osc_send_port, osc_recv_ip, osc_recv_port)
 
                     elif cmd == MotorProcess.CMD_OSC_DISCONNECT:
@@ -2124,6 +2141,7 @@ class MotorProcess:
                         pos2 = data.get('pos2', 0.1)
                         cycles = data.get('cycles', 5)  # 0 = infinite
                         speed = data.get('speed', ec._velocity)
+                        acc_dec = data.get('acc_dec', speed // 2)  # Default to half of speed if not provided
                         start_delay = data.get('start_delay', 0)
                         stop_delay = data.get('stop_delay', 0)
 
@@ -2137,7 +2155,7 @@ class MotorProcess:
                             send_response(False, "No valid slaves specified")
                             continue
 
-                        print(f"\n[MULTI-LOOP TEST] Starting: Slaves {[s+1 for s in valid_slaves]}, Pos1={pos1}m, Pos2={pos2}m, Cycles={cycles}, Speed={speed}")
+                        print(f"\n[MULTI-LOOP TEST] Starting: Slaves {[s+1 for s in valid_slaves]}, Pos1={pos1}m, Pos2={pos2}m, Cycles={cycles}, Speed={speed}, AccDec={acc_dec}")
 
                         # Clear stop flag
                         shared_stop.value = 0
@@ -2154,12 +2172,12 @@ class MotorProcess:
                             }
                         })
 
-                        def run_multi_loop_test(slave_list, p1, p2, num_cycles, vel_speed, delay_start, delay_stop):
+                        def run_multi_loop_test(slave_list, p1, p2, num_cycles, vel_speed, vel_acc_dec, delay_start, delay_stop):
                             try:
                                 max_cycles = 999999 if num_cycles == 0 else num_cycles
 
                                 # Helper function to update all slave statuses
-                                def send_all_status(status_dict, cycle, delay_duration=None):
+                                def send_all_status(status_dict, cycle, delay_duration=None, timing=None):
                                     data = {
                                         'multi_loop_test': {
                                             'status': 'all_status',
@@ -2169,7 +2187,25 @@ class MotorProcess:
                                     }
                                     if delay_duration is not None:
                                         data['multi_loop_test']['delay_duration'] = delay_duration
+                                    if timing is not None:
+                                        data['multi_loop_test']['timing'] = timing
                                     send_response(True, f"Cycle {cycle}", data)
+
+                                # Helper function to send timing update
+                                def send_timing_update(cycle, pos1_to_pos2=None, pos2_to_pos1=None, cycle_time=None):
+                                    timing_data = {'current_cycle': cycle}
+                                    if pos1_to_pos2 is not None:
+                                        timing_data['pos1_to_pos2'] = round(pos1_to_pos2, 3)
+                                    if pos2_to_pos1 is not None:
+                                        timing_data['pos2_to_pos1'] = round(pos2_to_pos1, 3)
+                                    if cycle_time is not None:
+                                        timing_data['cycle_time'] = round(cycle_time, 3)
+                                    send_response(True, f"Timing update", {
+                                        'multi_loop_test': {
+                                            'status': 'timing',
+                                            'timing': timing_data
+                                        }
+                                    })
 
                                 # Helper function to wait with stop check
                                 def delay_with_stop_check(delay_seconds):
@@ -2187,44 +2223,96 @@ class MotorProcess:
                                         time.sleep(0.01)
                                     return True
 
-                                # Helper function to move all slaves to target and wait
+                                # Thresholds for velocity profile
+                                MIN_DISTANCE_FOR_CRUISE = 0.01  # If distance < 0.01m, use slow speed only
+                                DECEL_DISTANCE = 0.008  # Start decelerating when this close to target (8mm)
+
+                                # Gradual ramping settings - slower and smoother
+                                RAMP_STEPS = 30  # More steps for smoother ramping
+                                RAMP_STEP = max(30, (vel_speed - vel_acc_dec) // RAMP_STEPS)
+                                RAMP_INTERVAL = 0.03  # Seconds between speed updates (30ms)
+
+                                print(f"  [MULTI-LOOP] Config: speed={vel_speed}, acc_dec={vel_acc_dec}")
+                                print(f"  [MULTI-LOOP] Ramp: step={RAMP_STEP}, interval={RAMP_INTERVAL}s, steps~{RAMP_STEPS}")
+                                print(f"  [MULTI-LOOP] Decel distance: {DECEL_DISTANCE}m")
+
+                                # Configure servo with moderate acceleration for additional smoothness
+                                SERVO_ACCEL = vel_acc_dec  # Use acc_dec as servo acceleration too
+                                for s in slave_list:
+                                    ec.configure_speed(s, vel_speed, SERVO_ACCEL, SERVO_ACCEL)
+
+                                # Timing tracking
+                                cycle_times = []
+
+                                # Helper function to move all slaves to target with gradual velocity ramping
                                 def move_all_to_target(target_pos, status_type='moving'):
-                                    """Move all slaves to target position, stop each when it reaches/passes target"""
-                                    print(f"  [MULTI-LOOP] Moving all slaves to {target_pos}m")
+                                    """Move all slaves to target position with gradual speed ramping
+                                    Returns: (success, reason, elapsed_time)
+                                    """
+                                    move_start_time = time.time()
+                                    print(f"  [MULTI-LOOP] Moving all slaves to {target_pos}m (speed={vel_speed}, acc_dec={vel_acc_dec})")
                                     status_dict = {s: status_type for s in slave_list}
                                     send_all_status(status_dict, 0 if status_type == 'homing' else cycle + 1)
 
-                                    # Determine direction for each slave and start movement
-                                    slave_directions = {}  # 1 = forward (increasing), -1 = backward (decreasing)
+                                    # Track each slave's state
+                                    slave_directions = {}    # 1 = forward, -1 = backward
+                                    slave_start_pos = {}     # Starting position for each slave
+                                    slave_phase = {}         # 'accel', 'cruise', 'decel', 'slow_only'
+                                    slave_current_speed = {} # Current actual speed (for gradual ramping)
                                     slaves_moving = set()
 
                                     for s in slave_list:
                                         current_pos = ec.read_position_meters(s)
-                                        if target_pos > current_pos:
-                                            ec.velocity_forward(s, vel_speed)
-                                            slave_directions[s] = 1  # Moving forward (position increasing)
-                                            slaves_moving.add(s)
-                                        elif target_pos < current_pos:
-                                            ec.velocity_backward(s, vel_speed)
-                                            slave_directions[s] = -1  # Moving backward (position decreasing)
-                                            slaves_moving.add(s)
-                                        else:
-                                            # Already at target
+                                        slave_start_pos[s] = current_pos
+                                        total_distance = abs(target_pos - current_pos)
+
+                                        if total_distance < 0.0001:
                                             print(f"  [MULTI-LOOP] Slave {s+1} already at target {target_pos}m")
+                                            continue
 
-                                    # If no slaves need to move, we're done
+                                        # Determine direction
+                                        if target_pos > current_pos:
+                                            slave_directions[s] = 1  # Forward
+                                        else:
+                                            slave_directions[s] = -1  # Backward
+
+                                        # Choose initial speed based on total distance
+                                        if total_distance < MIN_DISTANCE_FOR_CRUISE:
+                                            slave_phase[s] = 'slow_only'
+                                            slave_current_speed[s] = vel_acc_dec
+                                            print(f"  [MULTI-LOOP] Slave {s+1}: short distance ({total_distance:.4f}m), slow_only speed={vel_acc_dec}")
+                                        else:
+                                            slave_phase[s] = 'accel'
+                                            slave_current_speed[s] = vel_acc_dec
+                                            print(f"  [MULTI-LOOP] Slave {s+1}: distance={total_distance:.4f}m, starting at speed={vel_acc_dec}")
+
+                                        # Start movement at initial speed
+                                        if slave_directions[s] == 1:
+                                            ec.velocity_forward(s, slave_current_speed[s])
+                                        else:
+                                            ec.velocity_backward(s, slave_current_speed[s])
+                                        slaves_moving.add(s)
+
                                     if not slaves_moving:
-                                        return True, 'ok'
+                                        return True, 'ok', 0.0
 
-                                    # Wait until all slaves reach or pass target
+                                    debug_counter = 0
+                                    last_ramp_time = time.time()
+
                                     while slaves_moving:
                                         if shared_stop.value == 1:
                                             for s in slave_list:
                                                 ec.velocity_stop(s)
-                                            return False, 'stopped'
+                                            elapsed = time.time() - move_start_time
+                                            return False, 'stopped', elapsed
+
+                                        debug_counter += 1
+                                        current_time = time.time()
+                                        time_since_ramp = current_time - last_ramp_time
+                                        do_ramp = time_since_ramp >= RAMP_INTERVAL
 
                                         for s in list(slaves_moving):
-                                            # Double-check fault to avoid false positives
+                                            # Check for faults
                                             if ec.has_fault(s):
                                                 time.sleep(0.02)
                                                 if ec.has_fault(s):
@@ -2232,39 +2320,94 @@ class MotorProcess:
                                                     if error_code != 0:
                                                         for ss in slave_list:
                                                             ec.velocity_stop(ss)
-                                                        return False, 'fault'
+                                                        elapsed = time.time() - move_start_time
+                                                        return False, 'fault', elapsed
 
                                             current_pos = ec.read_position_meters(s)
                                             direction = slave_directions[s]
+                                            phase = slave_phase[s]
+                                            curr_speed = slave_current_speed[s]
 
-                                            # Check if slave reached or passed target
-                                            if direction == 1:  # Moving forward
-                                                if current_pos >= target_pos:
-                                                    ec.velocity_stop(s)
-                                                    slaves_moving.discard(s)
-                                                    print(f"  [MULTI-LOOP] Slave {s+1} reached {current_pos:.4f}m (target: {target_pos}m)")
-                                            else:  # Moving backward
-                                                if current_pos <= target_pos:
-                                                    ec.velocity_stop(s)
-                                                    slaves_moving.discard(s)
-                                                    print(f"  [MULTI-LOOP] Slave {s+1} reached {current_pos:.4f}m (target: {target_pos}m)")
+                                            distance_to_target = abs(target_pos - current_pos)
+
+                                            # Debug every 50 iterations
+                                            if debug_counter % 50 == 1:
+                                                print(f"  [DEBUG] Slave {s+1}: phase={phase}, speed={curr_speed}, pos={current_pos:.4f}, to_target={distance_to_target:.4f}")
+
+                                            # Check if reached target
+                                            reached = False
+                                            if direction == 1 and current_pos >= target_pos:
+                                                reached = True
+                                            elif direction == -1 and current_pos <= target_pos:
+                                                reached = True
+
+                                            if reached:
+                                                ec.velocity_stop(s)
+                                                slaves_moving.discard(s)
+                                                elapsed = time.time() - move_start_time
+                                                print(f"  [MULTI-LOOP] Slave {s+1} reached {current_pos:.4f}m in {elapsed:.3f}s (final speed={curr_speed})")
+                                                continue
+
+                                            # Phase state machine with gradual ramping
+                                            if phase == 'accel':
+                                                # Priority: check if need to start decelerating
+                                                if distance_to_target <= DECEL_DISTANCE:
+                                                    slave_phase[s] = 'decel'
+                                                    print(f"  [MULTI-LOOP] Slave {s+1}: accel->decel at speed={curr_speed}")
+                                                # Gradually increase speed
+                                                elif do_ramp and curr_speed < vel_speed:
+                                                    new_speed = min(curr_speed + RAMP_STEP, vel_speed)
+                                                    slave_current_speed[s] = new_speed
+                                                    if direction == 1:
+                                                        ec.velocity_forward(s, new_speed)
+                                                    else:
+                                                        ec.velocity_backward(s, new_speed)
+                                                    # Log every speed change
+                                                    if new_speed >= vel_speed:
+                                                        slave_phase[s] = 'cruise'
+                                                        print(f"  [RAMP] Slave {s+1}: ACCEL {curr_speed} -> {new_speed} (CRUISE)")
+                                                    else:
+                                                        print(f"  [RAMP] Slave {s+1}: ACCEL {curr_speed} -> {new_speed}")
+
+                                            elif phase == 'cruise':
+                                                # Check if need to start decelerating
+                                                if distance_to_target <= DECEL_DISTANCE:
+                                                    slave_phase[s] = 'decel'
+                                                    print(f"  [MULTI-LOOP] Slave {s+1}: cruise->decel at speed={curr_speed}")
+
+                                            elif phase == 'decel':
+                                                # Gradually decrease speed
+                                                if do_ramp and curr_speed > vel_acc_dec:
+                                                    new_speed = max(curr_speed - RAMP_STEP, vel_acc_dec)
+                                                    slave_current_speed[s] = new_speed
+                                                    if direction == 1:
+                                                        ec.velocity_forward(s, new_speed)
+                                                    else:
+                                                        ec.velocity_backward(s, new_speed)
+                                                    # Log every speed change
+                                                    if new_speed <= vel_acc_dec:
+                                                        print(f"  [RAMP] Slave {s+1}: DECEL {curr_speed} -> {new_speed} (MIN)")
+                                                    else:
+                                                        print(f"  [RAMP] Slave {s+1}: DECEL {curr_speed} -> {new_speed}")
+
+                                            # slow_only phase maintains constant speed
+
+                                        if do_ramp:
+                                            last_ramp_time = current_time
 
                                         update_shared_status(send_osc_movement=True)
-                                        time.sleep(0.01)
+                                        time.sleep(0.005)
 
                                     # Safety stop all
                                     for s in slave_list:
                                         ec.velocity_stop(s)
-                                    return True, 'ok'
 
-                                # Set max acceleration/deceleration for all slaves (instant stop)
-                                print(f"  [MULTI-LOOP] Setting max accel/decel for instant stop")
-                                for s in slave_list:
-                                    ec.set_max_accel_decel(s)
+                                    elapsed = time.time() - move_start_time
+                                    return True, 'ok', elapsed
 
                                 # ALWAYS move ALL slaves to pos1 first (homing)
                                 print(f"  [MULTI-LOOP] Homing all slaves to pos1 ({p1}m)")
-                                success, reason = move_all_to_target(p1, 'homing')
+                                success, reason, homing_time = move_all_to_target(p1, 'homing')
                                 if not success:
                                     shared_moving.value = 0
                                     if reason == 'stopped':
@@ -2277,11 +2420,15 @@ class MotorProcess:
                                         })
                                     return
 
-                                print(f"  [MULTI-LOOP] All slaves at start position {p1}m")
+                                print(f"  [MULTI-LOOP] All slaves at start position {p1}m (homing took {homing_time:.3f}s)")
                                 time.sleep(0.2)  # Brief pause after reaching start
 
                                 fault_found = False
+                                total_test_start = time.time()
+
                                 for cycle in range(max_cycles):
+                                    cycle_start_time = time.time()
+
                                     if shared_stop.value == 1:
                                         print(f"  [MULTI-LOOP] Stopped by user at cycle {cycle + 1}")
                                         break
@@ -2305,63 +2452,21 @@ class MotorProcess:
                                         if not delay_with_stop_check(delay_start):
                                             break
 
-                                    # Small buffer for position check (0.5mm) to handle load/momentum
-                                    pos_buffer = 0.0005
-
-                                    # All slaves move in same direction: pos1 -> pos2
-                                    go_forward = (p2 > p1)
-
-                                    # Move forward: all slaves to pos2
-                                    print(f"  [MULTI-LOOP] Cycle {cycle + 1}: Moving all slaves to {p2}m")
-                                    status_dict = {s: 'moving' for s in slave_list}
-                                    send_all_status(status_dict, cycle + 1)
-
-                                    # Start all slaves moving - send command to each slave
-                                    for s in slave_list:
-                                        if go_forward:
-                                            ec.velocity_forward(s, vel_speed)
+                                    # Move all slaves to pos2 with velocity profile
+                                    print(f"  [MULTI-LOOP] Cycle {cycle + 1}: Moving {p1}m -> {p2}m")
+                                    move_to_pos2_start = time.time()
+                                    success, reason, move_time_pos2 = move_all_to_target(p2, 'moving')
+                                    if not success:
+                                        if reason == 'stopped':
+                                            print(f"  [MULTI-LOOP] Stopped by user during move to pos2")
                                         else:
-                                            ec.velocity_backward(s, vel_speed)
-                                        time.sleep(0.005)  # Small delay between SDO writes
-
-                                    # Wait until all reach pos2
-                                    move_fault = False
-                                    slaves_moving = set(slave_list)
-                                    while slaves_moving:
-                                        if shared_stop.value == 1:
-                                            break
-                                        for s in list(slaves_moving):
-                                            # Double-check fault to avoid false positives
-                                            if ec.has_fault(s):
-                                                time.sleep(0.02)  # Small delay
-                                                if ec.has_fault(s):  # Check again
-                                                    error_code = ec.read_error_code(s)
-                                                    if error_code != 0:  # Only if real error
-                                                        move_fault = True
-                                                        print(f"  [MULTI-LOOP] Fault on slave {s+1} during move to pos2: error 0x{error_code:04X}")
-                                                        break
-                                            current_pos = ec.read_position_meters(s)
-                                            # Check with buffer - stop slightly before target
-                                            if go_forward and current_pos >= (p2 - pos_buffer):
-                                                ec.velocity_stop(s)
-                                                slaves_moving.discard(s)
-                                            elif not go_forward and current_pos <= (p2 + pos_buffer):
-                                                ec.velocity_stop(s)
-                                                slaves_moving.discard(s)
-                                        if move_fault:
-                                            break
-                                        update_shared_status(send_osc_movement=True)
-                                        time.sleep(0.01)
-
-                                    for s in slave_list:
-                                        ec.velocity_stop(s)
-
-                                    if shared_stop.value == 1 or move_fault:
-                                        if move_fault:
+                                            print(f"  [MULTI-LOOP] Fault during move to pos2")
                                             fault_found = True
                                         break
 
-                                    # Stop delay
+                                    print(f"  [TIMING] Move to pos2: {move_time_pos2:.3f}s")
+
+                                    # Stop delay at pos2
                                     if delay_stop > 0:
                                         print(f"  [MULTI-LOOP] Cycle {cycle + 1}: Waiting {delay_stop}s at pos2")
                                         status_dict = {s: 'wait' for s in slave_list}
@@ -2371,75 +2476,54 @@ class MotorProcess:
                                     else:
                                         time.sleep(0.1)
 
-                                    # Move backward: all slaves to pos1
-                                    print(f"  [MULTI-LOOP] Cycle {cycle + 1}: Moving all slaves to {p1}m")
-                                    status_dict = {s: 'moving' for s in slave_list}
-                                    send_all_status(status_dict, cycle + 1)
-
-                                    # Start all slaves moving - send command to each slave
-                                    for s in slave_list:
-                                        if go_forward:
-                                            ec.velocity_backward(s, vel_speed)
+                                    # Move all slaves to pos1 with velocity profile
+                                    print(f"  [MULTI-LOOP] Cycle {cycle + 1}: Moving {p2}m -> {p1}m")
+                                    success, reason, move_time_pos1 = move_all_to_target(p1, 'moving')
+                                    if not success:
+                                        if reason == 'stopped':
+                                            print(f"  [MULTI-LOOP] Stopped by user during move to pos1")
                                         else:
-                                            ec.velocity_forward(s, vel_speed)
-                                        time.sleep(0.005)  # Small delay between SDO writes
-
-                                    # Wait until all reach pos1
-                                    move_fault = False
-                                    slaves_moving = set(slave_list)
-                                    while slaves_moving:
-                                        if shared_stop.value == 1:
-                                            break
-                                        for s in list(slaves_moving):
-                                            # Double-check fault to avoid false positives
-                                            if ec.has_fault(s):
-                                                time.sleep(0.02)  # Small delay
-                                                if ec.has_fault(s):  # Check again
-                                                    error_code = ec.read_error_code(s)
-                                                    if error_code != 0:  # Only if real error
-                                                        move_fault = True
-                                                        print(f"  [MULTI-LOOP] Fault on slave {s+1} during move to pos1: error 0x{error_code:04X}")
-                                                        break
-                                            current_pos = ec.read_position_meters(s)
-                                            # Check with buffer - stop slightly before target
-                                            if go_forward and current_pos <= (p1 + pos_buffer):
-                                                ec.velocity_stop(s)
-                                                slaves_moving.discard(s)
-                                            elif not go_forward and current_pos >= (p1 - pos_buffer):
-                                                ec.velocity_stop(s)
-                                                slaves_moving.discard(s)
-                                        if move_fault:
-                                            break
-                                        update_shared_status(send_osc_movement=True)
-                                        time.sleep(0.01)
-
-                                    for s in slave_list:
-                                        ec.velocity_stop(s)
-
-                                    if shared_stop.value == 1 or move_fault:
-                                        if move_fault:
+                                            print(f"  [MULTI-LOOP] Fault during move to pos1")
                                             fault_found = True
                                         break
 
+                                    print(f"  [TIMING] Move to pos1: {move_time_pos1:.3f}s")
+
+                                    # Calculate cycle time
+                                    cycle_time = time.time() - cycle_start_time
+                                    print(f"  [TIMING] ===== Cycle {cycle + 1} complete: pos1->pos2={move_time_pos2:.3f}s, pos2->pos1={move_time_pos1:.3f}s, total_cycle={cycle_time:.3f}s =====")
+
+                                    # Send timing update to UI
+                                    send_timing_update(cycle + 1, pos1_to_pos2=move_time_pos2, pos2_to_pos1=move_time_pos1, cycle_time=cycle_time)
+
                                     time.sleep(0.1)
-                                    print(f"  [MULTI-LOOP] Cycle {cycle + 1} complete")
 
                                 # Test finished
+                                total_test_time = time.time() - total_test_start
                                 for s in slave_list:
                                     ec.velocity_stop(s)
                                 shared_moving.value = 0
 
+                                print(f"\n  [TIMING] ========================================")
+                                print(f"  [TIMING] TEST COMPLETE")
+                                print(f"  [TIMING] Total cycles: {cycle + 1}")
+                                print(f"  [TIMING] Total test time: {total_test_time:.3f}s")
+                                if cycle > 0:
+                                    avg_cycle_time = total_test_time / (cycle + 1)
+                                    print(f"  [TIMING] Average cycle time: {avg_cycle_time:.3f}s")
+                                print(f"  [TIMING] ========================================\n")
+
                                 if shared_stop.value == 1:
                                     send_response(True, "Multi-loop test stopped", {
-                                        'multi_loop_test': {'status': 'stopped', 'current_cycle': cycle + 1}
+                                        'multi_loop_test': {'status': 'stopped', 'current_cycle': cycle + 1, 'total_time': total_test_time}
                                     })
                                 elif fault_found:
                                     send_response(False, f"Multi-loop test stopped due to fault at cycle {cycle + 1}", {
-                                        'multi_loop_test': {'status': 'fault', 'current_cycle': cycle + 1}
+                                        'multi_loop_test': {'status': 'fault', 'current_cycle': cycle + 1, 'total_time': total_test_time}
                                     })
                                 else:
-                                    send_response(True, f"Multi-loop test completed: {cycle + 1} cycles", {
-                                        'multi_loop_test': {'status': 'completed', 'total_cycles': cycle + 1}
+                                    send_response(True, f"Multi-loop test completed: {cycle + 1} cycles in {total_test_time:.2f}s", {
+                                        'multi_loop_test': {'status': 'completed', 'total_cycles': cycle + 1, 'total_time': total_test_time}
                                     })
 
                             except Exception as e:
@@ -2452,7 +2536,7 @@ class MotorProcess:
                         # Start thread
                         multi_loop_thread = threading.Thread(
                             target=run_multi_loop_test,
-                            args=(valid_slaves, pos1, pos2, cycles, speed, start_delay, stop_delay),
+                            args=(valid_slaves, pos1, pos2, cycles, speed, acc_dec, start_delay, stop_delay),
                             daemon=True
                         )
                         multi_loop_thread.start()

@@ -1,9 +1,9 @@
 {
   "speed": {
     "movement_speed": {
-      "velocity": 90000,
-      "acceleration": 45000,
-      "deceleration": 45000,
+      "velocity": 120000,
+      "acceleration": 60000,
+      "deceleration": 60000,
       "csp_max_step": 100
     }
   },
@@ -21,9 +21,9 @@
   "positions": {
     "home_pos_M": [0, 0, 0, 0, 0],
     "target_pos": [1, 1, 1, 1, 1],
-    "pattern1" : [0, 0.325, 0.6, 0.975, 1.2],
-    "pattern2" : [1.2, 0.975, 0.6, 0.325, 0],
-    "pattern3" : [0.6, 0.6, 0.6, 0.6, 0.6]
+    "pattern1" : [0, 0.375, 0.75, 1.125, 1.5],
+    "pattern2" : [1.5, 1.125, 0.75, 0.375, 0],
+    "pattern3" : [0.75, 0.75, 0.75, 0.75, 0.75]
   },
   "template": {
      "name": "Movement Sequence (5 Slaves)",
@@ -37,38 +37,40 @@
       {
         "name": "Motor 0 to Target",
         "type": "movement",
-        "position": "pattern3",
+        "position": "target_pos",
         "is_simultaneous": false,
-        "slave_delay_ms": 30,
-        "move_order": "dynamic",
-        "delay": 0
+        "slave_delay_ms": 3000,
+        "move_order": "define",
+        "move_order_list": [0, 1, 2, 3, 4],
+        "delay": 3
       },
       {
         "name": "Motor 0 to Home",
         "type": "movement",
-        "position": "pattern1",
+        "position": "home_pos_M",
         "is_simultaneous": false,
-        "slave_delay_ms": 30,
-        "move_order": "dynamic",
-        "delay": 0
+        "slave_delay_ms": 3000,
+        "move_order": "define",
+        "move_order_list": [4, 3, 2, 1, 0],
+        "delay": 3
       },
       {
         "name": "Motor 0 to Target",
         "type": "movement",
-        "position": "pattern2",
+        "position": "target_pos",
         "is_simultaneous": false,
         "slave_delay_ms": 30,
         "move_order": "dynamic",
-        "delay": 0
+        "delay": 3
       },
       {
-        "name": "Motor 0 to Target",
+        "name": "Motor 0 to Home",
         "type": "movement",
-        "position": "pattern3",
+        "position": "home_pos_M",
         "is_simultaneous": false,
         "slave_delay_ms": 30,
         "move_order": "dynamic",
-        "delay": 0
+        "delay": 3
       }
     ]
   }

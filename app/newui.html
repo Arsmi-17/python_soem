@@ -1156,12 +1156,26 @@
                                 <div>
                                     <div class="config-label" style="color: var(--accent-blue); font-size: 0.65rem;">Listen:</div>
                                     <input type="text" id="oscRecvIp" value="0.0.0.0" style="margin: 0; padding: 4px; font-size: 0.7rem;">
-                                    <input type="number" id="oscRecvPort" value="8000" style="margin: 0; padding: 4px; font-size: 0.7rem; width: 100%;">
+                                    <input type="number" id="oscRecvPort" value="8001" style="margin: 0; padding: 4px; font-size: 0.7rem; width: 100%;">
                                 </div>
                                 <div>
                                     <div class="config-label" style="color: var(--accent-green); font-size: 0.65rem;">Send to:</div>
                                     <input type="text" id="oscSendIp" value="127.0.0.1" style="margin: 0; padding: 4px; font-size: 0.7rem;">
                                     <input type="number" id="oscSendPort" value="9000" style="margin: 0; padding: 4px; font-size: 0.7rem; width: 100%;">
+                                </div>
+                            </div>
+                            <!-- OSC Send Addresses -->
+                            <div style="margin-bottom: 8px; padding: 6px; background: rgba(88, 166, 255, 0.05); border-radius: 4px;">
+                                <div class="config-label" style="font-size: 0.65rem; margin-bottom: 4px;">Send Addresses:</div>
+                                <div style="display: flex; gap: 12px; font-size: 0.7rem;">
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                        <input type="checkbox" id="oscSendMovement" style="margin: 0; width: auto;">
+                                        <span>/movement</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                        <input type="checkbox" id="oscSendTemplate" checked style="margin: 0; width: auto;">
+                                        <span>/template_step</span>
+                                    </label>
                                 </div>
                             </div>
                             <div class="grid-2">
@@ -1385,6 +1399,17 @@
                                         <input type="checkbox" id="multiLoopPosLimit" checked onchange="applyMultiLoopPosLimit()">
                                         <label for="multiLoopPosLimit" style="font-size: 0.75rem; color: var(--text-secondary);">Limit position (0 to 0.035)</label>
                                     </div>
+                                    <!-- Speed and Accel/Decel Inputs -->
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                        <div>
+                                            <div class="config-label">Speed (m/s):</div>
+                                            <input type="number" id="multiLoopSpeed" value="3" min="0.1" step="0.1" style="margin: 0;">
+                                        </div>
+                                        <div>
+                                            <div class="config-label">Accel/Decel (m/s²):</div>
+                                            <input type="number" id="multiLoopAccDec" value="1.7" min="0.1" step="0.1" style="margin: 0;">
+                                        </div>
+                                    </div>
                                     <!-- Delay Inputs -->
                                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                                         <div>
@@ -1407,6 +1432,18 @@
                                         <span id="multiLoopCurrentCycle" style="color: var(--accent-green); font-weight: 700;">0</span>
                                         <span style="color: var(--text-secondary);"> / </span>
                                         <span id="multiLoopTotalCycles" style="color: var(--text-secondary);">0</span>
+                                    </div>
+                                    <!-- Timing Display -->
+                                    <div id="multiLoopTimingDisplay" style="display: none; padding: 6px; background: var(--bg-dark); border-radius: 4px; font-size: 0.7rem;">
+                                        <div style="color: var(--accent-cyan); font-weight: 600; text-align: center; margin-bottom: 4px;">Timing</div>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                                            <div style="color: var(--text-secondary);">Pos1→Pos2:</div>
+                                            <div id="multiLoopTimePos2" style="color: var(--accent-green); text-align: right;">--</div>
+                                            <div style="color: var(--text-secondary);">Pos2→Pos1:</div>
+                                            <div id="multiLoopTimePos1" style="color: var(--accent-green); text-align: right;">--</div>
+                                            <div style="color: var(--text-secondary);">Cycle Time:</div>
+                                            <div id="multiLoopCycleTime" style="color: var(--accent-yellow); text-align: right; font-weight: 600;">--</div>
+                                        </div>
                                     </div>
                                     <!-- Start/Stop Buttons -->
                                     <div class="grid-2">
@@ -3045,13 +3082,14 @@
             const startDelay = parseFloat(document.getElementById('multiLoopStartDelay').value) || 0;
             const stopDelay = parseFloat(document.getElementById('multiLoopStopDelay').value) || 0;
 
+            // Get speed and accel/decel from multi-loop specific inputs
+            const speed = Math.round(parseFloat(document.getElementById('multiLoopSpeed').value) * 1000);
+            const accDec = Math.round(parseFloat(document.getElementById('multiLoopAccDec').value) * 1000);
+
             if (pos1 === pos2) {
                 log('Position 1 and Position 2 must be different', 'err');
                 return;
             }
-
-            // Get current velocity from UI
-            const speed = Math.round(parseFloat(document.getElementById('pvSpeed').value) * 1000);
 
             multiLoopRunning = true;
 
@@ -3064,8 +3102,13 @@
             document.getElementById('multiLoopStartBtn').disabled = true;
             document.getElementById('multiLoopStopBtn').disabled = false;
             document.getElementById('multiLoopCycleDisplay').style.display = 'block';
+            document.getElementById('multiLoopTimingDisplay').style.display = 'block';
             document.getElementById('multiLoopCurrentCycle').textContent = '0';
             document.getElementById('multiLoopTotalCycles').textContent = cycles === 0 ? '∞' : cycles;
+            // Reset timing display
+            document.getElementById('multiLoopTimePos2').textContent = '--';
+            document.getElementById('multiLoopTimePos1').textContent = '--';
+            document.getElementById('multiLoopCycleTime').textContent = '--';
 
             // Disable slave buttons during test
             document.querySelectorAll('#multiLoopSlaveGrid .slave-btn').forEach(btn => {
@@ -3078,7 +3121,7 @@
 
             updateMultiLoopMonitor();
 
-            log(`Multi-Slave Loop Test started: ${multiLoopSelectedSlaves.size} slaves, Pos1=${pos1}m, Pos2=${pos2}m`, 'com');
+            log(`Multi-Slave Loop Test started: ${multiLoopSelectedSlaves.size} slaves, Pos1=${pos1}m, Pos2=${pos2}m, Speed=${speed/1000}m/s, AccDec=${accDec/1000}m/s²`, 'com');
 
             sendCmd('multi_loop_test_start', {
                 slaves: Array.from(multiLoopSelectedSlaves),
@@ -3086,6 +3129,7 @@
                 pos2: pos2,
                 cycles: cycles,
                 speed: speed,
+                acc_dec: accDec,
                 start_delay: startDelay,
                 stop_delay: stopDelay
             });
@@ -3168,6 +3212,24 @@
                 }
                 if (data.current_cycle !== undefined) {
                     document.getElementById('multiLoopCurrentCycle').textContent = data.current_cycle;
+                }
+            }
+            else if (status === 'timing') {
+                // Update timing display
+                if (data.timing) {
+                    const timing = data.timing;
+                    if (timing.pos1_to_pos2 !== undefined) {
+                        document.getElementById('multiLoopTimePos2').textContent = timing.pos1_to_pos2.toFixed(3) + 's';
+                    }
+                    if (timing.pos2_to_pos1 !== undefined) {
+                        document.getElementById('multiLoopTimePos1').textContent = timing.pos2_to_pos1.toFixed(3) + 's';
+                    }
+                    if (timing.cycle_time !== undefined) {
+                        document.getElementById('multiLoopCycleTime').textContent = timing.cycle_time.toFixed(3) + 's';
+                    }
+                    if (timing.current_cycle !== undefined) {
+                        document.getElementById('multiLoopCurrentCycle').textContent = timing.current_cycle;
+                    }
                 }
             }
             else if (status === 'stopped' || status === 'completed') {
@@ -3843,17 +3905,25 @@
             const recvPort = parseInt(document.getElementById('oscRecvPort').value);
             const modeRadio = document.querySelector('input[name="oscMode"]:checked');
             const mode = modeRadio ? parseInt(modeRadio.value) : 3;
+            const sendMovement = document.getElementById('oscSendMovement').checked;
+            const sendTemplate = document.getElementById('oscSendTemplate').checked;
 
             sendCmd('osc_connect', {
                 send_ip: sendIp,
                 send_port: sendPort,
                 recv_ip: recvIp,
                 recv_port: recvPort,
-                mode: mode
+                mode: mode,
+                send_movement: sendMovement,
+                send_template: sendTemplate
             });
 
             const modeNames = {1: 'Receive', 2: 'Send', 3: 'Both'};
-            log(`Starting OSC (${modeNames[mode]}): Recv ${recvIp}:${recvPort}, Send ${sendIp}:${sendPort}`, 'com');
+            const sendAddrs = [];
+            if (sendMovement) sendAddrs.push('/movement');
+            if (sendTemplate) sendAddrs.push('/template_step');
+            const addrInfo = sendAddrs.length > 0 ? ` [${sendAddrs.join(', ')}]` : '';
+            log(`Starting OSC (${modeNames[mode]}): Recv ${recvIp}:${recvPort}, Send ${sendIp}:${sendPort}${addrInfo}`, 'com');
         }
 
         function oscDisconnect() {

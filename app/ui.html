@@ -804,7 +804,7 @@
                             </div>
                             <div>
                                 <div class="config-label">Port:</div>
-                                <input type="number" id="oscRecvPort" value="8000" placeholder="8000" style="margin: 0;">
+                                <input type="number" id="oscRecvPort" value="8001" placeholder="8001" style="margin: 0;">
                             </div>
                         </div>
                     </div>
@@ -2243,7 +2243,7 @@
             const sendIp = document.getElementById('oscSendIp').value || '127.0.0.1';
             const sendPort = parseInt(document.getElementById('oscSendPort').value) || 9000;
             const recvIp = document.getElementById('oscRecvIp').value || '0.0.0.0';
-            const recvPort = parseInt(document.getElementById('oscRecvPort').value) || 8000;
+            const recvPort = parseInt(document.getElementById('oscRecvPort').value) || 8001;
             const modeRadio = document.querySelector('input[name="oscMode"]:checked');
             const mode = modeRadio ? parseInt(modeRadio.value) : 3;  // 1=recv, 2=send, 3=both
             const modeNames = {1: 'Receive', 2: 'Send', 3: 'Both'};
