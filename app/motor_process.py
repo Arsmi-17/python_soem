@@ -618,39 +618,31 @@ class MotorProcess:
             if shared_osc_connected.value == 1 and shared_osc_send_template.value == 1:
                 osc_send("/template_complete")
 
-        def parse_osc_message(data):
-            """
-            Parse incoming OSC message.
-            Returns (address, args) tuple or (None, None) if invalid.
-            """
+        def parse_single_osc_message(data):
+            """Parse a single OSC message. Returns (address, args) or (None, None)."""
             try:
                 import struct
 
-                # Find address (null-terminated, padded to 4 bytes)
                 null_idx = data.find(b'\x00')
                 if null_idx == -1:
                     return None, None
 
                 address = data[:null_idx].decode('utf-8')
 
-                # Skip to next 4-byte boundary
                 idx = null_idx + 1
                 while idx % 4 != 0:
                     idx += 1
 
-                # Parse type tag
                 if idx >= len(data) or data[idx:idx+1] != b',':
                     return address, []
 
                 type_tag_end = data.find(b'\x00', idx)
-                type_tag = data[idx+1:type_tag_end].decode('utf-8')  # Skip the comma
+                type_tag = data[idx+1:type_tag_end].decode('utf-8')
 
-                # Skip to next 4-byte boundary
                 idx = type_tag_end + 1
                 while idx % 4 != 0:
                     idx += 1
 
-                # Parse arguments
                 args = []
                 for t in type_tag:
                     if t == 'f':
@@ -672,8 +664,47 @@ class MotorProcess:
                 return address, args
 
             except Exception as e:
-                print(f"[OSC] Parse error: {e}")
                 return None, None
+
+        def parse_osc_message(data):
+            """
+            Parse OSC message or bundle.
+            Returns list of (address, args) tuples.
+            Bundles are unpacked to extract all messages inside.
+            """
+            import struct
+
+            # Check if this is a bundle
+            if data.startswith(b'#bundle'):
+                messages = []
+                # Skip "#bundle\0" (8 bytes) + timetag (8 bytes) = 16 bytes
+                idx = 16
+
+                while idx + 4 <= len(data):
+                    # Read message size (4 bytes, big-endian)
+                    msg_size = struct.unpack('>i', data[idx:idx+4])[0]
+                    idx += 4
+
+                    if msg_size <= 0 or idx + msg_size > len(data):
+                        break
+
+                    # Extract and parse the message
+                    msg_data = data[idx:idx+msg_size]
+                    idx += msg_size
+
+                    # Recursively parse (could be nested bundle)
+                    parsed = parse_osc_message(msg_data)
+                    messages.extend(parsed)
+
+                if not messages:
+                    print(f"[OSC] Empty bundle received (size={len(data)} bytes)")
+                return messages
+            else:
+                # Regular message
+                addr, args = parse_single_osc_message(data)
+                if addr:
+                    return [(addr, args)]
+                return []
 
         # Load OSC config from JSON file
         def load_osc_config():
@@ -827,316 +858,319 @@ class MotorProcess:
                 try:
                     data, addr = sock.recvfrom(4096)
 
-                    address, args = parse_osc_message(data)
-                    if address is None:
+                    # Parse message (returns list of (address, args) tuples)
+                    messages = parse_osc_message(data)
+                    if not messages:
                         continue
 
-                    # Log received message
-                    args_str = ' '.join(str(a) for a in args) if args else ''
-                    add_osc_log('recv', f"{address} [{args_str}]".strip())
-                    print(f"[OSC] Received: {address} {args}")
+                    # Process each message (bundles may contain multiple)
+                    for address, args in messages:
+                        # Log received message
+                        args_str = ' '.join(str(a) for a in args) if args else ''
+                        add_osc_log('recv', f"{address} [{args_str}]".strip())
+                        print(f"[OSC] Received: {address} {args}")
 
-                    # =========================================================
-                    # /start [value] - Move slave0 to mapped position
-                    # =========================================================
-                    if address == '/start':
-                        if args and len(args) > 0:
-                            value = int(args[0])
-                            target_position = OSC_START_VALUE_MAP.get(value)
+                        # =========================================================
+                        # /start [value] - Move slave0 to mapped position
+                        # =========================================================
+                        if address == '/start':
+                            if args and len(args) > 0:
+                                value = int(args[0])
+                                target_position = OSC_START_VALUE_MAP.get(value)
 
-                            if target_position is not None:
-                                print(f"[OSC] /start [{value}] -> Moving slave0 to {target_position}m")
-                                print(f"[OSC] Speed: vel={OSC_MOVE_SPEED}, accel={OSC_MOVE_ACCEL}, decel={OSC_MOVE_DECEL}")
-                                add_osc_log('info', f"/start [{value}] -> slave0 to {target_position}m")
+                                if target_position is not None:
+                                    print(f"[OSC] /start [{value}] -> Moving slave0 to {target_position}m")
+                                    print(f"[OSC] Speed: vel={OSC_MOVE_SPEED}, accel={OSC_MOVE_ACCEL}, decel={OSC_MOVE_DECEL}")
+                                    add_osc_log('info', f"/start [{value}] -> slave0 to {target_position}m")
 
-                                if controller.slaves_count > 0:
-                                    if controller.is_enabled(0):
-                                        # Stop any existing movement broadcaster
-                                        osc_movement_active[0] = False
-                                        if osc_movement_thread[0] and osc_movement_thread[0].is_alive():
-                                            osc_movement_thread[0].join(timeout=0.5)
+                                    if controller.slaves_count > 0:
+                                        if controller.is_enabled(0):
+                                            # Stop any existing movement broadcaster
+                                            osc_movement_active[0] = False
+                                            if osc_movement_thread[0] and osc_movement_thread[0].is_alive():
+                                                osc_movement_thread[0].join(timeout=0.5)
 
-                                        # Apply speed settings (vel, accel=vel/2, decel=vel/2)
-                                        controller.configure_speed(0, OSC_MOVE_SPEED, OSC_MOVE_ACCEL, OSC_MOVE_DECEL)
+                                            # Apply speed settings (vel, accel=vel/2, decel=vel/2)
+                                            controller.configure_speed(0, OSC_MOVE_SPEED, OSC_MOVE_ACCEL, OSC_MOVE_DECEL)
 
-                                        # Set movement tracking variables
-                                        osc_movement_slave[0] = 0
-                                        osc_movement_target[0] = target_position
-                                        osc_movement_value[0] = value
-                                        osc_movement_active[0] = True
+                                            # Set movement tracking variables
+                                            osc_movement_slave[0] = 0
+                                            osc_movement_target[0] = target_position
+                                            osc_movement_value[0] = value
+                                            osc_movement_active[0] = True
 
-                                        # Start movement
-                                        controller.move_to_meters(0, target_position)
+                                            # Start movement
+                                            controller.move_to_meters(0, target_position)
 
-                                        # Start position broadcaster thread
-                                        osc_movement_thread[0] = threading.Thread(
-                                            target=osc_movement_broadcaster,
-                                            args=(controller,),
-                                            daemon=True
-                                        )
-                                        osc_movement_thread[0].start()
+                                            # Start position broadcaster thread
+                                            osc_movement_thread[0] = threading.Thread(
+                                                target=osc_movement_broadcaster,
+                                                args=(controller,),
+                                                daemon=True
+                                            )
+                                            osc_movement_thread[0].start()
+                                        else:
+                                            print(f"[OSC] Slave 0 not enabled")
+                                            add_osc_log('warn', "Slave 0 not enabled")
                                     else:
-                                        print(f"[OSC] Slave 0 not enabled")
-                                        add_osc_log('warn', "Slave 0 not enabled")
+                                        print(f"[OSC] No slaves available")
+                                        add_osc_log('warn', "No slaves available")
                                 else:
-                                    print(f"[OSC] No slaves available")
-                                    add_osc_log('warn', "No slaves available")
+                                    print(f"[OSC] /start unknown value: {value}. Valid: {list(OSC_START_VALUE_MAP.keys())}")
+                                    add_osc_log('warn', f"Unknown value: {value}")
                             else:
-                                print(f"[OSC] /start unknown value: {value}. Valid: {list(OSC_START_VALUE_MAP.keys())}")
-                                add_osc_log('warn', f"Unknown value: {value}")
-                        else:
-                            print(f"[OSC] /start requires a value argument")
-                            add_osc_log('warn', "/start requires a value")
+                                print(f"[OSC] /start requires a value argument")
+                                add_osc_log('warn', "/start requires a value")
 
-                    # =========================================================
-                    # /move [slave] [position] - Move slave to position
-                    # =========================================================
-                    elif address == '/move':
-                        if len(args) >= 2:
-                            slave_idx = int(args[0])
-                            position = float(args[1])
+                        # =========================================================
+                        # /move [slave] [position] - Move slave to position
+                        # =========================================================
+                        elif address == '/move':
+                            if len(args) >= 2:
+                                slave_idx = int(args[0])
+                                position = float(args[1])
 
-                            print(f"[OSC] /move slave{slave_idx} to {position}m")
-                            add_osc_log('info', f"/move slave{slave_idx} to {position}m")
+                                print(f"[OSC] /move slave{slave_idx} to {position}m")
+                                add_osc_log('info', f"/move slave{slave_idx} to {position}m")
 
-                            if slave_idx >= 0 and slave_idx < controller.slaves_count:
-                                if controller.is_enabled(slave_idx):
-                                    controller.move_to_meters(slave_idx, position)
+                                if slave_idx >= 0 and slave_idx < controller.slaves_count:
+                                    if controller.is_enabled(slave_idx):
+                                        controller.move_to_meters(slave_idx, position)
+                                    else:
+                                        print(f"[OSC] Slave {slave_idx} not enabled")
                                 else:
-                                    print(f"[OSC] Slave {slave_idx} not enabled")
+                                    print(f"[OSC] Invalid slave index: {slave_idx}")
                             else:
-                                print(f"[OSC] Invalid slave index: {slave_idx}")
-                        else:
-                            print(f"[OSC] /move requires 2 arguments: slave, position")
+                                print(f"[OSC] /move requires 2 arguments: slave, position")
 
-                    # =========================================================
-                    # /home - Move all slaves to home (0m)
-                    # =========================================================
-                    elif address == '/home':
-                        print("[OSC] /home -> Moving all to home (0m)")
-                        add_osc_log('info', "/home -> All slaves to 0m")
-                        for i in range(controller.slaves_count):
-                            if controller.is_enabled(i):
-                                controller.move_to_meters(i, 0.0)
+                        # =========================================================
+                        # /home - Move all slaves to home (0m)
+                        # =========================================================
+                        elif address == '/home':
+                            print("[OSC] /home -> Moving all to home (0m)")
+                            add_osc_log('info', "/home -> All slaves to 0m")
+                            for i in range(controller.slaves_count):
+                                if controller.is_enabled(i):
+                                    controller.move_to_meters(i, 0.0)
 
-                    # =========================================================
-                    # /slave_move/<slave_id> [position] - Legacy format
-                    # =========================================================
-                    elif address.startswith('/slave_move/'):
-                        # Format: /slave_move/<slave_id> with float arg for position
-                        parts = address.split('/')
-                        if len(parts) >= 3:
-                            try:
-                                slave_idx = int(parts[2])
-                                if args and len(args) > 0:
-                                    position = float(args[0])
-                                elif len(parts) >= 4:
-                                    position = float(parts[3])
-                                else:
-                                    continue
-
-                                if slave_idx < 0 or slave_idx >= controller.slaves_count:
-                                    print(f"[OSC] Invalid slave: {slave_idx}")
-                                    continue
-
-                                if controller.is_enabled(slave_idx):
-                                    controller.move_to_meters(slave_idx, position)
-                                    print(f"[OSC] Moving slave {slave_idx} to {position:.4f}m")
-                                else:
-                                    print(f"[OSC] Slave {slave_idx} not enabled")
-
-                            except (ValueError, IndexError) as e:
-                                print(f"[OSC] Parse error for slave_move: {e}")
-
-                    elif address == '/template_run':
-                        print("[OSC] Triggering template run")
-                        cmd_queue.put({'cmd': MotorProcess.CMD_TEMPLATE})
-
-                    elif address == '/template_stop' or address == '/stop':
-                        print("[OSC] Triggering stop")
-                        shared_stop.value = 1
-
-                    elif address == '/enable':
-                        print("[OSC] Triggering enable")
-                        cmd_queue.put({'cmd': MotorProcess.CMD_ENABLE})
-
-                    elif address == '/disable':
-                        print("[OSC] Triggering disable")
-                        cmd_queue.put({'cmd': MotorProcess.CMD_DISABLE})
-
-                    elif address == '/reset':
-                        print("[OSC] Triggering reset")
-                        cmd_queue.put({'cmd': MotorProcess.CMD_RESET})
-
-                    # =========================================================
-                    # /hexora_open - Move slaves from pos1 to pos2 (PV mode only)
-                    # /hexora_close - Move slaves from pos2 to pos1 (PV mode only)
-                    # Config loaded from json/hexora/hexora_receiver.json
-                    # =========================================================
-                    elif address == '/hexora_open' or address == '/hexora_close':
-                        # Check if movement already in progress
-                        if hexora_moving[0]:
-                            print(f"[HEXORA] {address} ignored - movement already in progress")
-                            add_osc_log('warn', f"{address} ignored - busy")
-                            continue
-
-                        # Load Hexora configuration from JSON using helper function
-                        hexora_cfg = load_hexora_config()
-                        # Parse config (slaves are 1-indexed in JSON, convert to 0-indexed)
-                        HEXORA_SLAVES = [s - 1 for s in hexora_cfg.get('slaves', [1, 2])]
-                        positions = hexora_cfg.get('positions', {})
-                        HEXORA_POS1 = positions.get('pos1', 0.0)
-                        HEXORA_POS2 = positions.get('pos2', 0.028)
-                        speed_cfg = hexora_cfg.get('speed', {})
-                        HEXORA_SPEED = speed_cfg.get('max_speed', 1000)
-                        HEXORA_ACC_DEC = speed_cfg.get('acc_dec_speed', 300)
-                        movement_cfg = hexora_cfg.get('movement', {})
-                        HEXORA_DECEL_DIST = movement_cfg.get('decel_distance', 0.008)
-                        HEXORA_MIN_CRUISE = movement_cfg.get('min_distance_for_cruise', 0.01)
-                        HEXORA_RAMP_STEPS = movement_cfg.get('ramp_steps', 30)
-                        HEXORA_RAMP_INTERVAL = movement_cfg.get('ramp_interval', 0.03)
-                        print(f"[HEXORA] Config: slaves={[s+1 for s in HEXORA_SLAVES]}, pos1={HEXORA_POS1}m, pos2={HEXORA_POS2}m, speed={HEXORA_SPEED}, acc_dec={HEXORA_ACC_DEC}")
-
-                        # Check if in PV mode (mode 3)
-                        if shared_mode.value != 3:
-                            mode_names = {1: 'PP', 3: 'PV', 8: 'CSP'}
-                            current_mode = mode_names.get(shared_mode.value, str(shared_mode.value))
-                            print(f"[OSC] {address} ignored - not in PV mode (current: {current_mode})")
-                            add_osc_log('warn', f"{address} ignored - PV mode required")
-                        else:
-                            target_pos = HEXORA_POS2 if address == '/hexora_open' else HEXORA_POS1
-                            action = 'Opening' if address == '/hexora_open' else 'Closing'
-                            print(f"[OSC] {address} -> {action} to {target_pos}m")
-                            add_osc_log('info', f"{address} -> {action} to {target_pos}m")
-
-                            # Start movement in a thread to not block OSC receiver
-                            def hexora_move(target, slaves, speed, acc_dec, decel_dist, min_cruise, ramp_steps, ramp_interval):
-                                hexora_moving[0] = True
-                                hexora_stop_requested[0] = False  # Reset stop flag at start
+                        # =========================================================
+                        # /slave_move/<slave_id> [position] - Legacy format
+                        # =========================================================
+                        elif address.startswith('/slave_move/'):
+                            # Format: /slave_move/<slave_id> with float arg for position
+                            parts = address.split('/')
+                            if len(parts) >= 3:
                                 try:
-                                    ramp_step = max(30, (speed - acc_dec) // ramp_steps)
-                                    print(f"  [HEXORA] Ramp config: step={ramp_step}, interval={ramp_interval}s, decel_dist={decel_dist}m")
+                                    slave_idx = int(parts[2])
+                                    if args and len(args) > 0:
+                                        position = float(args[0])
+                                    elif len(parts) >= 4:
+                                        position = float(parts[3])
+                                    else:
+                                        continue
 
-                                    # Configure servo speed for all slaves BEFORE movement
-                                    # This sets the servo's internal speed/accel/decel parameters
-                                    for s in slaves:
-                                        if s < controller.slaves_count:
-                                            controller.configure_speed(s, speed, acc_dec, acc_dec)
-                                    print(f"  [HEXORA] Servo configured: vel={speed}, accel={acc_dec}, decel={acc_dec}")
+                                    if slave_idx < 0 or slave_idx >= controller.slaves_count:
+                                        print(f"[OSC] Invalid slave: {slave_idx}")
+                                        continue
 
-                                    slave_directions = {}
-                                    slave_phase = {}
-                                    slave_current_speed = {}
-                                    slaves_moving = set()
+                                    if controller.is_enabled(slave_idx):
+                                        controller.move_to_meters(slave_idx, position)
+                                        print(f"[OSC] Moving slave {slave_idx} to {position:.4f}m")
+                                    else:
+                                        print(f"[OSC] Slave {slave_idx} not enabled")
 
-                                    for s in slaves:
-                                        if s >= controller.slaves_count:
-                                            print(f"  [HEXORA] Slave {s+1} not available (only {controller.slaves_count} slaves)")
-                                            continue
-                                        current_pos = controller.read_position_meters(s)
-                                        total_distance = abs(target - current_pos)
+                                except (ValueError, IndexError) as e:
+                                    print(f"[OSC] Parse error for slave_move: {e}")
 
-                                        if total_distance < 0.0001:
-                                            print(f"  [HEXORA] Slave {s+1} already at {target}m")
-                                            continue
+                        elif address == '/template_run':
+                            print("[OSC] Triggering template run")
+                            cmd_queue.put({'cmd': MotorProcess.CMD_TEMPLATE})
 
-                                        slave_directions[s] = 1 if target > current_pos else -1
-                                        if total_distance < min_cruise:
-                                            slave_phase[s] = 'slow_only'
-                                            print(f"  [HEXORA] Slave {s+1}: short distance ({total_distance:.4f}m) -> slow_only mode")
-                                        else:
-                                            slave_phase[s] = 'accel'
-                                            print(f"  [HEXORA] Slave {s+1}: distance={total_distance:.4f}m -> starting ACCEL at speed={acc_dec}")
-                                        slave_current_speed[s] = acc_dec
+                        elif address == '/template_stop' or address == '/stop':
+                            print("[OSC] Triggering stop")
+                            shared_stop.value = 1
 
-                                        if slave_directions[s] == 1:
-                                            controller.velocity_forward(s, acc_dec)
-                                        else:
-                                            controller.velocity_backward(s, acc_dec)
-                                        slaves_moving.add(s)
+                        elif address == '/enable':
+                            print("[OSC] Triggering enable")
+                            cmd_queue.put({'cmd': MotorProcess.CMD_ENABLE})
 
-                                    if not slaves_moving:
-                                        print(f"  [HEXORA] No slaves to move")
-                                        return
+                        elif address == '/disable':
+                            print("[OSC] Triggering disable")
+                            cmd_queue.put({'cmd': MotorProcess.CMD_DISABLE})
 
-                                    last_ramp_time = time.time()
-                                    move_start_time = time.time()
-                                    while slaves_moving and running.value and not hexora_stop_requested[0]:
-                                        current_time = time.time()
-                                        do_ramp = (current_time - last_ramp_time) >= ramp_interval
+                        elif address == '/reset':
+                            print("[OSC] Triggering reset")
+                            cmd_queue.put({'cmd': MotorProcess.CMD_RESET})
 
-                                        for s in list(slaves_moving):
+                        # =========================================================
+                        # /hexora_open - Move slaves from pos1 to pos2 (PV mode only)
+                        # /hexora_close - Move slaves from pos2 to pos1 (PV mode only)
+                        # Config loaded from json/hexora/hexora_receiver.json
+                        # =========================================================
+                        elif address == '/hexora_open' or address == '/hexora_close':
+                            # Check if movement already in progress
+                            if hexora_moving[0]:
+                                print(f"[HEXORA] {address} ignored - movement already in progress")
+                                add_osc_log('warn', f"{address} ignored - busy")
+                                continue
+
+                            # Load Hexora configuration from JSON using helper function
+                            hexora_cfg = load_hexora_config()
+                            # Parse config (slaves are 1-indexed in JSON, convert to 0-indexed)
+                            HEXORA_SLAVES = [s - 1 for s in hexora_cfg.get('slaves', [1, 2])]
+                            positions = hexora_cfg.get('positions', {})
+                            HEXORA_POS1 = positions.get('pos1', 0.0)
+                            HEXORA_POS2 = positions.get('pos2', 0.028)
+                            speed_cfg = hexora_cfg.get('speed', {})
+                            HEXORA_SPEED = speed_cfg.get('max_speed', 1000)
+                            HEXORA_ACC_DEC = speed_cfg.get('acc_dec_speed', 300)
+                            movement_cfg = hexora_cfg.get('movement', {})
+                            HEXORA_DECEL_DIST = movement_cfg.get('decel_distance', 0.008)
+                            HEXORA_MIN_CRUISE = movement_cfg.get('min_distance_for_cruise', 0.01)
+                            HEXORA_RAMP_STEPS = movement_cfg.get('ramp_steps', 30)
+                            HEXORA_RAMP_INTERVAL = movement_cfg.get('ramp_interval', 0.03)
+                            print(f"[HEXORA] Config: slaves={[s+1 for s in HEXORA_SLAVES]}, pos1={HEXORA_POS1}m, pos2={HEXORA_POS2}m, speed={HEXORA_SPEED}, acc_dec={HEXORA_ACC_DEC}")
+
+                            # Check if in PV mode (mode 3)
+                            if shared_mode.value != 3:
+                                mode_names = {1: 'PP', 3: 'PV', 8: 'CSP'}
+                                current_mode = mode_names.get(shared_mode.value, str(shared_mode.value))
+                                print(f"[OSC] {address} ignored - not in PV mode (current: {current_mode})")
+                                add_osc_log('warn', f"{address} ignored - PV mode required")
+                            else:
+                                target_pos = HEXORA_POS2 if address == '/hexora_open' else HEXORA_POS1
+                                action = 'Opening' if address == '/hexora_open' else 'Closing'
+                                print(f"[OSC] {address} -> {action} to {target_pos}m")
+                                add_osc_log('info', f"{address} -> {action} to {target_pos}m")
+
+                                # Start movement in a thread to not block OSC receiver
+                                def hexora_move(target, slaves, speed, acc_dec, decel_dist, min_cruise, ramp_steps, ramp_interval):
+                                    hexora_moving[0] = True
+                                    hexora_stop_requested[0] = False  # Reset stop flag at start
+                                    try:
+                                        ramp_step = max(30, (speed - acc_dec) // ramp_steps)
+                                        print(f"  [HEXORA] Ramp config: step={ramp_step}, interval={ramp_interval}s, decel_dist={decel_dist}m")
+
+                                        # Configure servo speed for all slaves BEFORE movement
+                                        # This sets the servo's internal speed/accel/decel parameters
+                                        for s in slaves:
+                                            if s < controller.slaves_count:
+                                                controller.configure_speed(s, speed, acc_dec, acc_dec)
+                                        print(f"  [HEXORA] Servo configured: vel={speed}, accel={acc_dec}, decel={acc_dec}")
+
+                                        slave_directions = {}
+                                        slave_phase = {}
+                                        slave_current_speed = {}
+                                        slaves_moving = set()
+
+                                        for s in slaves:
+                                            if s >= controller.slaves_count:
+                                                print(f"  [HEXORA] Slave {s+1} not available (only {controller.slaves_count} slaves)")
+                                                continue
                                             current_pos = controller.read_position_meters(s)
-                                            direction = slave_directions[s]
-                                            phase = slave_phase[s]
-                                            curr_speed = slave_current_speed[s]
-                                            dist_to_target = abs(target - current_pos)
+                                            total_distance = abs(target - current_pos)
 
-                                            # Check if reached
-                                            reached = (direction == 1 and current_pos >= target) or \
-                                                      (direction == -1 and current_pos <= target)
-                                            if reached:
-                                                controller.velocity_stop(s)
-                                                slaves_moving.discard(s)
-                                                elapsed = time.time() - move_start_time
-                                                print(f"  [HEXORA] Slave {s+1} reached {current_pos:.4f}m in {elapsed:.3f}s (final phase: {phase})")
+                                            if total_distance < 0.0001:
+                                                print(f"  [HEXORA] Slave {s+1} already at {target}m")
                                                 continue
 
-                                            # Phase transitions with logging
-                                            if phase == 'accel':
-                                                if dist_to_target <= decel_dist:
-                                                    slave_phase[s] = 'decel'
-                                                    print(f"  [HEXORA] Slave {s+1}: ACCEL -> DECEL at speed={curr_speed}, dist={dist_to_target:.4f}m")
-                                                elif do_ramp and curr_speed < speed:
-                                                    new_speed = min(curr_speed + ramp_step, speed)
-                                                    slave_current_speed[s] = new_speed
-                                                    if direction == 1:
-                                                        controller.velocity_forward(s, new_speed)
-                                                    else:
-                                                        controller.velocity_backward(s, new_speed)
-                                                    if new_speed >= speed:
-                                                        slave_phase[s] = 'cruise'
-                                                        print(f"  [HEXORA] Slave {s+1}: ACCEL -> CRUISE at max speed={new_speed}")
-                                            elif phase == 'cruise':
-                                                if dist_to_target <= decel_dist:
-                                                    slave_phase[s] = 'decel'
-                                                    print(f"  [HEXORA] Slave {s+1}: CRUISE -> DECEL at speed={curr_speed}, dist={dist_to_target:.4f}m")
-                                            elif phase == 'decel':
-                                                if do_ramp and curr_speed > acc_dec:
-                                                    new_speed = max(curr_speed - ramp_step, acc_dec)
-                                                    slave_current_speed[s] = new_speed
-                                                    if direction == 1:
-                                                        controller.velocity_forward(s, new_speed)
-                                                    else:
-                                                        controller.velocity_backward(s, new_speed)
+                                            slave_directions[s] = 1 if target > current_pos else -1
+                                            if total_distance < min_cruise:
+                                                slave_phase[s] = 'slow_only'
+                                                print(f"  [HEXORA] Slave {s+1}: short distance ({total_distance:.4f}m) -> slow_only mode")
+                                            else:
+                                                slave_phase[s] = 'accel'
+                                                print(f"  [HEXORA] Slave {s+1}: distance={total_distance:.4f}m -> starting ACCEL at speed={acc_dec}")
+                                            slave_current_speed[s] = acc_dec
 
-                                        if do_ramp:
-                                            last_ramp_time = current_time
-                                        time.sleep(0.005)
+                                            if slave_directions[s] == 1:
+                                                controller.velocity_forward(s, acc_dec)
+                                            else:
+                                                controller.velocity_backward(s, acc_dec)
+                                            slaves_moving.add(s)
 
-                                    # Check if stopped by request
-                                    if hexora_stop_requested[0]:
-                                        print(f"  [HEXORA] Movement stopped by OSC disconnect")
+                                        if not slaves_moving:
+                                            print(f"  [HEXORA] No slaves to move")
+                                            return
 
-                                    # Safety stop - stop all slaves
-                                    for s in slaves:
-                                        if s < controller.slaves_count:
-                                            controller.velocity_stop(s)
-                                    total_time = time.time() - move_start_time
-                                    if not hexora_stop_requested[0]:
-                                        print(f"  [HEXORA] Movement complete in {total_time:.3f}s")
-                                except Exception as e:
-                                    print(f"  [HEXORA] Error: {e}")
-                                finally:
-                                    hexora_moving[0] = False
+                                        last_ramp_time = time.time()
+                                        move_start_time = time.time()
+                                        while slaves_moving and running.value and not hexora_stop_requested[0]:
+                                            current_time = time.time()
+                                            do_ramp = (current_time - last_ramp_time) >= ramp_interval
 
-                            hexora_thread = threading.Thread(
-                                target=hexora_move,
-                                args=(target_pos, HEXORA_SLAVES, HEXORA_SPEED, HEXORA_ACC_DEC,
-                                      HEXORA_DECEL_DIST, HEXORA_MIN_CRUISE, HEXORA_RAMP_STEPS, HEXORA_RAMP_INTERVAL),
-                                daemon=True
-                            )
-                            hexora_thread.start()
+                                            for s in list(slaves_moving):
+                                                current_pos = controller.read_position_meters(s)
+                                                direction = slave_directions[s]
+                                                phase = slave_phase[s]
+                                                curr_speed = slave_current_speed[s]
+                                                dist_to_target = abs(target - current_pos)
+
+                                                # Check if reached
+                                                reached = (direction == 1 and current_pos >= target) or \
+                                                          (direction == -1 and current_pos <= target)
+                                                if reached:
+                                                    controller.velocity_stop(s)
+                                                    slaves_moving.discard(s)
+                                                    elapsed = time.time() - move_start_time
+                                                    print(f"  [HEXORA] Slave {s+1} reached {current_pos:.4f}m in {elapsed:.3f}s (final phase: {phase})")
+                                                    continue
+
+                                                # Phase transitions with logging
+                                                if phase == 'accel':
+                                                    if dist_to_target <= decel_dist:
+                                                        slave_phase[s] = 'decel'
+                                                        print(f"  [HEXORA] Slave {s+1}: ACCEL -> DECEL at speed={curr_speed}, dist={dist_to_target:.4f}m")
+                                                    elif do_ramp and curr_speed < speed:
+                                                        new_speed = min(curr_speed + ramp_step, speed)
+                                                        slave_current_speed[s] = new_speed
+                                                        if direction == 1:
+                                                            controller.velocity_forward(s, new_speed)
+                                                        else:
+                                                            controller.velocity_backward(s, new_speed)
+                                                        if new_speed >= speed:
+                                                            slave_phase[s] = 'cruise'
+                                                            print(f"  [HEXORA] Slave {s+1}: ACCEL -> CRUISE at max speed={new_speed}")
+                                                elif phase == 'cruise':
+                                                    if dist_to_target <= decel_dist:
+                                                        slave_phase[s] = 'decel'
+                                                        print(f"  [HEXORA] Slave {s+1}: CRUISE -> DECEL at speed={curr_speed}, dist={dist_to_target:.4f}m")
+                                                elif phase == 'decel':
+                                                    if do_ramp and curr_speed > acc_dec:
+                                                        new_speed = max(curr_speed - ramp_step, acc_dec)
+                                                        slave_current_speed[s] = new_speed
+                                                        if direction == 1:
+                                                            controller.velocity_forward(s, new_speed)
+                                                        else:
+                                                            controller.velocity_backward(s, new_speed)
+
+                                            if do_ramp:
+                                                last_ramp_time = current_time
+                                            time.sleep(0.005)
+
+                                        # Check if stopped by request
+                                        if hexora_stop_requested[0]:
+                                            print(f"  [HEXORA] Movement stopped by OSC disconnect")
+
+                                        # Safety stop - stop all slaves
+                                        for s in slaves:
+                                            if s < controller.slaves_count:
+                                                controller.velocity_stop(s)
+                                        total_time = time.time() - move_start_time
+                                        if not hexora_stop_requested[0]:
+                                            print(f"  [HEXORA] Movement complete in {total_time:.3f}s")
+                                    except Exception as e:
+                                        print(f"  [HEXORA] Error: {e}")
+                                    finally:
+                                        hexora_moving[0] = False
+
+                                hexora_thread = threading.Thread(
+                                    target=hexora_move,
+                                    args=(target_pos, HEXORA_SLAVES, HEXORA_SPEED, HEXORA_ACC_DEC,
+                                          HEXORA_DECEL_DIST, HEXORA_MIN_CRUISE, HEXORA_RAMP_STEPS, HEXORA_RAMP_INTERVAL),
+                                    daemon=True
+                                )
+                                hexora_thread.start()
 
                 except socket.timeout:
                     continue

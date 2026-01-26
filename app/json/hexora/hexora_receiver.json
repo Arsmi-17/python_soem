@@ -2,7 +2,7 @@
     "description": "Hexora OSC Receiver Configuration - Controls /hexora_open and /hexora_close commands",
     "note": "Only works in PV (Profile Velocity) mode",
 
-    "slaves": [1],
+    "slaves": [1,2,3,4,5,6],
     "slaves_note": "Slave numbers (1-indexed). Example: [1, 2] for slaves 1 and 2",
 
     "positions": {
