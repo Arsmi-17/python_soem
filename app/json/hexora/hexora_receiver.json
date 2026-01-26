@@ -1,0 +1,32 @@
+{
+    "description": "Hexora OSC Receiver Configuration - Controls /hexora_open and /hexora_close commands",
+    "note": "Only works in PV (Profile Velocity) mode",
+
+    "slaves": [1, 2, 3, 4, 5, 6],
+    "slaves_note": "Slave numbers (1-indexed). Example: [1, 2] for slaves 1 and 2",
+
+    "positions": {
+        "pos1": 0.003,
+        "pos2": 0.028,
+        "pos1_note": "Closed/Home position in meters (used by /hexora_close)",
+        "pos2_note": "Open position in meters (used by /hexora_open)"
+    },
+
+    "speed": {
+        "max_speed": 3500,
+        "acc_dec_speed": 2000,
+        "max_speed_note": "Maximum movement speed (units/s)",
+        "acc_dec_speed_note": "Speed at start/end of movement for smooth accel/decel"
+    },
+
+    "movement": {
+        "decel_distance": 0.008,
+        "min_distance_for_cruise": 0.01,
+        "ramp_steps": 30,
+        "ramp_interval": 0.03,
+        "decel_distance_note": "Start decelerating when this close to target (meters)",
+        "min_distance_for_cruise_note": "If total distance < this, skip cruise phase and use slow speed only",
+        "ramp_steps_note": "Number of speed increments during accel/decel",
+        "ramp_interval_note": "Seconds between speed updates during ramping"
+    }
+}

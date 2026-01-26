@@ -3,7 +3,7 @@
     
     "config": {
     "network_interface": "\\Device\\NPF_{B21FCFC7-17B3-4593-AD19-0B4713ED3938}",
-    "mode": "PP",
+    "mode": "PV",
     "num_slaves": 1,
     "actual_steps_per_meter": 792914,
     "raw_steps_per_meter": 202985985,

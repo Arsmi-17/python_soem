@@ -203,14 +203,13 @@
         /* PP Mode Layout */
         .pp-row-1 {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(2, 1fr);
             gap: 12px;
             margin-bottom: 12px;
         }
 
         .pp-row-1 .control-block,
-        .pp-row-1 .speed-block,
-        .pp-row-1 .osc-block {
+        .pp-row-1 .speed-block {
             max-width: none;
         }
 
@@ -224,10 +223,7 @@
 
         @media (max-width: 900px) {
             .pp-row-1 {
-                grid-template-columns: 1fr 1fr;
-            }
-            .pp-row-1 .osc-block {
-                grid-column: span 2;
+                grid-template-columns: 1fr;
             }
         }
 
@@ -904,6 +900,86 @@
         .info-tooltip-content .mode-info strong {
             color: var(--text-primary);
         }
+
+        /* Communication Button - floating at bottom right, left of info button */
+        .comm-tooltip {
+            position: fixed;
+            bottom: 20px;
+            right: 75px;
+            z-index: 1000;
+        }
+
+        .comm-tooltip-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--accent-purple);
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(163, 113, 247, 0.4);
+            transition: all 0.2s ease;
+        }
+
+        .comm-tooltip-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 16px rgba(163, 113, 247, 0.5);
+        }
+
+        .comm-tooltip-content {
+            display: none;
+            position: absolute;
+            bottom: 50px;
+            right: 0;
+            width: 380px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-ui);
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        .comm-tooltip-content.show {
+            display: block;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .comm-tooltip-content h3 {
+            color: var(--accent-purple);
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-ui);
+        }
+
+        .comm-section {
+            margin-bottom: 15px;
+            padding: 12px;
+            background: var(--bg-card);
+            border-radius: 6px;
+        }
+
+        .comm-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .comm-section h4 {
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .comm-section.udp-section h4 {
+            color: var(--accent-blue);
+        }
+
+        .comm-section.osc-section h4 {
+            color: var(--accent-purple);
+        }
     </style>
 </head>
 <body>
@@ -1065,35 +1141,12 @@
                         <div class="speed-info">Effective Velocity: <span id="cspEffectiveVel">800000</span> units/s</div>
                         <button class="btn btn-primary" onclick="applyCSPSpeed()" style="width: 100%;">Apply CSP Speed</button>
                     </div>
-
-                    <!-- UDP Receiver -->
-                    <div class="receiver-block" id="udpSection">
-                        <h4>UDP Receiver</h4>
-                        <div class="receiver-status">
-                            <span class="status-dot disconnected" id="udpStatusDot"></span>
-                            <span id="udpStatusText">Disconnected</span>
-                        </div>
-                        <div class="grid-2">
-                            <div>
-                                <div class="config-label">IP Address:</div>
-                                <input type="text" id="udpIp" value="0.0.0.0" style="margin: 0;">
-                            </div>
-                            <div>
-                                <div class="config-label">Port:</div>
-                                <input type="number" id="udpPort" value="9000" style="margin: 0;">
-                            </div>
-                        </div>
-                        <div class="grid-2" style="margin-top: 10px;">
-                            <button class="btn btn-enable" onclick="udpConnect()" id="udpConnectBtn">Connect</button>
-                            <button class="btn btn-disable" onclick="udpDisconnect()" id="udpDisconnectBtn" disabled>Disconnect</button>
-                        </div>
-                    </div>
                     </div>
                 </div>
 
                 <!-- PP Actions -->
                 <div id="ppActions" class="hidden">
-                    <!-- Row 1: Custom | Speed | OSC -->
+                    <!-- Row 1: Custom | Speed -->
                     <div class="pp-row-1">
                         <div class="control-block" id="ppMovementBlock">
                             <h4>Custom Movement</h4>
@@ -1125,63 +1178,6 @@
                                 Accel/Decel: <span id="ppEffectiveAccel">40000</span> units/s²
                             </div>
                             <button class="btn btn-enable" onclick="applyPPSpeed()" style="width: 100%;">Apply PP Speed</button>
-                        </div>
-
-                        <!-- OSC Control -->
-                        <div class="osc-block" id="oscSection">
-                            <h4>OSC Control</h4>
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                <span class="status-dot disconnected" id="oscStatusDot"></span>
-                                <span id="oscStatusText" style="font-size: 0.75rem;">Disconnected</span>
-                            </div>
-                            <div id="oscConnectionInfo" style="display: none; margin-bottom: 8px; padding: 6px; background: rgba(88, 166, 255, 0.1); border-radius: 4px; font-size: 0.7rem;">
-                                <div id="oscRecvInfo" style="color: var(--accent-blue); margin-bottom: 2px;"></div>
-                                <div id="oscSendInfo" style="color: var(--accent-green);"></div>
-                            </div>
-                            <div style="display: flex; gap: 10px; margin-bottom: 8px; font-size: 0.75rem;">
-                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                    <input type="radio" name="oscMode" value="1" style="margin: 0; width: auto;">
-                                    <span>Recv</span>
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                    <input type="radio" name="oscMode" value="2" style="margin: 0; width: auto;">
-                                    <span>Send</span>
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                    <input type="radio" name="oscMode" value="3" checked style="margin: 0; width: auto;">
-                                    <span>Both</span>
-                                </label>
-                            </div>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
-                                <div>
-                                    <div class="config-label" style="color: var(--accent-blue); font-size: 0.65rem;">Listen:</div>
-                                    <input type="text" id="oscRecvIp" value="0.0.0.0" style="margin: 0; padding: 4px; font-size: 0.7rem;">
-                                    <input type="number" id="oscRecvPort" value="8001" style="margin: 0; padding: 4px; font-size: 0.7rem; width: 100%;">
-                                </div>
-                                <div>
-                                    <div class="config-label" style="color: var(--accent-green); font-size: 0.65rem;">Send to:</div>
-                                    <input type="text" id="oscSendIp" value="127.0.0.1" style="margin: 0; padding: 4px; font-size: 0.7rem;">
-                                    <input type="number" id="oscSendPort" value="9000" style="margin: 0; padding: 4px; font-size: 0.7rem; width: 100%;">
-                                </div>
-                            </div>
-                            <!-- OSC Send Addresses -->
-                            <div style="margin-bottom: 8px; padding: 6px; background: rgba(88, 166, 255, 0.05); border-radius: 4px;">
-                                <div class="config-label" style="font-size: 0.65rem; margin-bottom: 4px;">Send Addresses:</div>
-                                <div style="display: flex; gap: 12px; font-size: 0.7rem;">
-                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                        <input type="checkbox" id="oscSendMovement" style="margin: 0; width: auto;">
-                                        <span>/movement</span>
-                                    </label>
-                                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                        <input type="checkbox" id="oscSendTemplate" checked style="margin: 0; width: auto;">
-                                        <span>/template_step</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="grid-2">
-                                <button class="btn btn-enable btn-sm" onclick="oscConnect()" id="oscConnectBtn">Start</button>
-                                <button class="btn btn-disable btn-sm" onclick="oscDisconnect()" id="oscDisconnectBtn" disabled>Stop</button>
-                            </div>
                         </div>
                     </div>
 
@@ -1470,6 +1466,94 @@
 
     </div>
 
+    <!-- Communication Tooltip (Bottom Right, left of Info) -->
+    <div class="comm-tooltip">
+        <button class="comm-tooltip-btn" onclick="toggleCommTooltip()" title="Communication Settings">C</button>
+        <div class="comm-tooltip-content" id="commTooltipContent">
+            <h3>Communication Settings</h3>
+
+            <!-- UDP Section -->
+            <div class="comm-section udp-section">
+                <h4>
+                    <span class="status-dot disconnected" id="commUdpStatusDot"></span>
+                    UDP Receiver
+                    <span id="commUdpStatusText" style="font-size: 0.7rem; color: var(--text-secondary);">Disconnected</span>
+                </h4>
+                <div class="grid-2" style="gap: 8px; margin-bottom: 8px;">
+                    <div>
+                        <div class="config-label" style="font-size: 0.7rem;">IP Address:</div>
+                        <input type="text" id="commUdpIp" value="0.0.0.0" style="margin: 0; padding: 6px; font-size: 0.8rem;">
+                    </div>
+                    <div>
+                        <div class="config-label" style="font-size: 0.7rem;">Port:</div>
+                        <input type="number" id="commUdpPort" value="9000" style="margin: 0; padding: 6px; font-size: 0.8rem;">
+                    </div>
+                </div>
+                <div class="grid-2" style="gap: 8px;">
+                    <button class="btn btn-enable btn-sm" onclick="commUdpConnect()" id="commUdpConnectBtn">Connect</button>
+                    <button class="btn btn-disable btn-sm" onclick="commUdpDisconnect()" id="commUdpDisconnectBtn" disabled>Disconnect</button>
+                </div>
+            </div>
+
+            <!-- OSC Section -->
+            <div class="comm-section osc-section">
+                <h4>
+                    <span class="status-dot disconnected" id="commOscStatusDot"></span>
+                    OSC Control
+                    <span id="commOscStatusText" style="font-size: 0.7rem; color: var(--text-secondary);">Disconnected</span>
+                </h4>
+                <div id="commOscConnectionInfo" style="display: none; margin-bottom: 8px; padding: 6px; background: rgba(88, 166, 255, 0.1); border-radius: 4px; font-size: 0.7rem;">
+                    <div id="commOscRecvInfo" style="color: var(--accent-blue); margin-bottom: 2px;"></div>
+                    <div id="commOscSendInfo" style="color: var(--accent-green);"></div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 8px; font-size: 0.75rem;">
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                        <input type="radio" name="commOscMode" value="1" style="margin: 0; width: auto;">
+                        <span>Recv</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                        <input type="radio" name="commOscMode" value="2" style="margin: 0; width: auto;">
+                        <span>Send</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                        <input type="radio" name="commOscMode" value="3" checked style="margin: 0; width: auto;">
+                        <span>Both</span>
+                    </label>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
+                    <div>
+                        <div class="config-label" style="color: var(--accent-blue); font-size: 0.65rem;">Listen:</div>
+                        <input type="text" id="commOscRecvIp" value="0.0.0.0" style="margin: 0; padding: 4px; font-size: 0.7rem;">
+                        <input type="number" id="commOscRecvPort" value="8001" style="margin: 0; padding: 4px; font-size: 0.7rem; width: 100%;">
+                    </div>
+                    <div>
+                        <div class="config-label" style="color: var(--accent-green); font-size: 0.65rem;">Send to:</div>
+                        <input type="text" id="commOscSendIp" value="127.0.0.1" style="margin: 0; padding: 4px; font-size: 0.7rem;">
+                        <input type="number" id="commOscSendPort" value="9000" style="margin: 0; padding: 4px; font-size: 0.7rem; width: 100%;">
+                    </div>
+                </div>
+                <!-- OSC Send Addresses -->
+                <div style="margin-bottom: 8px; padding: 6px; background: rgba(88, 166, 255, 0.05); border-radius: 4px;">
+                    <div class="config-label" style="font-size: 0.65rem; margin-bottom: 4px;">Send Addresses:</div>
+                    <div style="display: flex; gap: 12px; font-size: 0.7rem;">
+                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <input type="checkbox" id="commOscSendMovement" style="margin: 0; width: auto;">
+                            <span>/movement</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <input type="checkbox" id="commOscSendTemplate" checked style="margin: 0; width: auto;">
+                            <span>/template_step</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="grid-2" style="gap: 8px;">
+                    <button class="btn btn-enable btn-sm" onclick="commOscConnect()" id="commOscConnectBtn">Start</button>
+                    <button class="btn btn-disable btn-sm" onclick="commOscDisconnect()" id="commOscDisconnectBtn" disabled>Stop</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Info Tooltip (Bottom Right) -->
     <div class="info-tooltip">
         <button class="info-tooltip-btn" onclick="toggleInfoTooltip()">?</button>
@@ -1559,6 +1643,120 @@
         function toggleInfoTooltip() {
             const content = document.getElementById('infoTooltipContent');
             content.classList.toggle('show');
+            // Close comm tooltip when opening info
+            document.getElementById('commTooltipContent').classList.remove('show');
+        }
+
+        // Toggle communication tooltip
+        function toggleCommTooltip() {
+            const content = document.getElementById('commTooltipContent');
+            content.classList.toggle('show');
+            // Close info tooltip when opening comm
+            document.getElementById('infoTooltipContent').classList.remove('show');
+        }
+
+        // Communication UDP functions (global)
+        function commUdpConnect() {
+            const ip = document.getElementById('commUdpIp').value;
+            const port = parseInt(document.getElementById('commUdpPort').value);
+            sendCmd('udp_connect', { ip: ip, port: port });
+            log(`Connecting UDP: ${ip}:${port}`, 'com');
+        }
+
+        function commUdpDisconnect() {
+            sendCmd('udp_disconnect');
+            log('Disconnecting UDP', 'com');
+        }
+
+        function updateCommUdpStatus(connected) {
+            const dot = document.getElementById('commUdpStatusDot');
+            const text = document.getElementById('commUdpStatusText');
+            const connectBtn = document.getElementById('commUdpConnectBtn');
+            const disconnectBtn = document.getElementById('commUdpDisconnectBtn');
+
+            if (connected) {
+                dot.className = 'status-dot connected';
+                text.textContent = 'Connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                dot.className = 'status-dot disconnected';
+                text.textContent = 'Disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        // Communication OSC functions (global)
+        function commOscConnect() {
+            const sendIp = document.getElementById('commOscSendIp').value;
+            const sendPort = parseInt(document.getElementById('commOscSendPort').value);
+            const recvIp = document.getElementById('commOscRecvIp').value;
+            const recvPort = parseInt(document.getElementById('commOscRecvPort').value);
+            const modeRadio = document.querySelector('input[name="commOscMode"]:checked');
+            const mode = modeRadio ? parseInt(modeRadio.value) : 3;
+            const sendMovement = document.getElementById('commOscSendMovement').checked;
+            const sendTemplate = document.getElementById('commOscSendTemplate').checked;
+
+            sendCmd('osc_connect', {
+                send_ip: sendIp,
+                send_port: sendPort,
+                recv_ip: recvIp,
+                recv_port: recvPort,
+                mode: mode,
+                send_movement: sendMovement,
+                send_template: sendTemplate
+            });
+            const modeNames = {1: 'Receive', 2: 'Send', 3: 'Both'};
+            let addrInfo = sendMovement ? ' [/movement]' : '';
+            addrInfo += sendTemplate ? ' [/template_step]' : '';
+            log(`Starting OSC (${modeNames[mode]}): Recv ${recvIp}:${recvPort}, Send ${sendIp}:${sendPort}${addrInfo}`, 'com');
+        }
+
+        function commOscDisconnect() {
+            sendCmd('osc_disconnect');
+            log('Stopping OSC', 'com');
+        }
+
+        function updateCommOscStatus(connected, mode) {
+            const dot = document.getElementById('commOscStatusDot');
+            const text = document.getElementById('commOscStatusText');
+            const connectBtn = document.getElementById('commOscConnectBtn');
+            const disconnectBtn = document.getElementById('commOscDisconnectBtn');
+            const connectionInfo = document.getElementById('commOscConnectionInfo');
+            const recvInfo = document.getElementById('commOscRecvInfo');
+            const sendInfo = document.getElementById('commOscSendInfo');
+
+            if (connected) {
+                dot.className = 'status-dot connected';
+                const modeNames = {1: 'Receiving', 2: 'Sending', 3: 'Both'};
+                text.textContent = modeNames[mode] || 'Connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                connectionInfo.style.display = 'block';
+                if (mode === 1 || mode === 3) {
+                    const recvIp = document.getElementById('commOscRecvIp').value;
+                    const recvPort = document.getElementById('commOscRecvPort').value;
+                    recvInfo.textContent = `Listening: ${recvIp}:${recvPort}`;
+                    recvInfo.style.display = 'block';
+                } else {
+                    recvInfo.style.display = 'none';
+                }
+                if (mode === 2 || mode === 3) {
+                    const sendIp = document.getElementById('commOscSendIp').value;
+                    const sendPort = document.getElementById('commOscSendPort').value;
+                    sendInfo.textContent = `Sending to: ${sendIp}:${sendPort}`;
+                    sendInfo.style.display = 'block';
+                } else {
+                    sendInfo.style.display = 'none';
+                }
+            } else {
+                dot.className = 'status-dot disconnected';
+                text.textContent = 'Disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                connectionInfo.style.display = 'none';
+            }
         }
 
         // Update info tooltip steps based on system state
@@ -1597,12 +1795,17 @@
             }
         }
 
-        // Close tooltip when clicking outside
+        // Close tooltips when clicking outside
         document.addEventListener('click', function(e) {
-            const tooltip = document.querySelector('.info-tooltip');
-            const content = document.getElementById('infoTooltipContent');
-            if (!tooltip.contains(e.target) && content.classList.contains('show')) {
-                content.classList.remove('show');
+            const infoTooltip = document.querySelector('.info-tooltip');
+            const infoContent = document.getElementById('infoTooltipContent');
+            if (!infoTooltip.contains(e.target) && infoContent.classList.contains('show')) {
+                infoContent.classList.remove('show');
+            }
+            const commTooltip = document.querySelector('.comm-tooltip');
+            const commContent = document.getElementById('commTooltipContent');
+            if (!commTooltip.contains(e.target) && commContent.classList.contains('show')) {
+                commContent.classList.remove('show');
             }
         });
 
@@ -1768,12 +1971,13 @@
             // Update operation status
             updateOperationStatus(status);
 
-            // Update UDP/OSC status
+            // Update UDP/OSC/Hexora status (global comm panel)
             if (status.udp_connected !== undefined) {
-                updateUdpStatus(status.udp_connected);
+                updateCommUdpStatus(status.udp_connected);
             }
             if (status.osc_connected !== undefined) {
-                updateOscStatus(status.osc_connected);
+                const oscMode = status.osc_mode || 3;
+                updateCommOscStatus(status.osc_connected, oscMode);
             }
         }
 
@@ -3763,13 +3967,13 @@
             const cspMaxStepInput = document.getElementById('cspMaxStep');
             const pvSpeedInput = document.getElementById('pvSpeed');
 
-            // OSC buttons
-            const oscConnectBtn = document.getElementById('oscConnectBtn');
-            const oscDisconnectBtn = document.getElementById('oscDisconnectBtn');
+            // Communication OSC buttons
+            const oscConnectBtn = document.getElementById('commOscConnectBtn');
+            const oscDisconnectBtn = document.getElementById('commOscDisconnectBtn');
 
-            // UDP buttons
-            const udpConnectBtn = document.getElementById('udpConnectBtn');
-            const udpDisconnectBtn = document.getElementById('udpDisconnectBtn');
+            // Communication UDP buttons
+            const udpConnectBtn = document.getElementById('commUdpConnectBtn');
+            const udpDisconnectBtn = document.getElementById('commUdpDisconnectBtn');
 
             if (isTemplateRunning) {
                 // Disable movement controls
@@ -3862,110 +4066,6 @@
             } else {
                 if (pvSlaveSelect) pvSlaveSelect.disabled = false;
                 updateButtonStates();
-            }
-        }
-
-        // UDP functions
-        function udpConnect() {
-            const ip = document.getElementById('udpIp').value;
-            const port = parseInt(document.getElementById('udpPort').value);
-            sendCmd('udp_connect', { ip: ip, port: port });
-            log(`Connecting UDP: ${ip}:${port}`, 'com');
-        }
-
-        function udpDisconnect() {
-            sendCmd('udp_disconnect');
-            log('Disconnecting UDP', 'com');
-        }
-
-        function updateUdpStatus(connected) {
-            const dot = document.getElementById('udpStatusDot');
-            const text = document.getElementById('udpStatusText');
-            const connectBtn = document.getElementById('udpConnectBtn');
-            const disconnectBtn = document.getElementById('udpDisconnectBtn');
-
-            if (connected) {
-                dot.className = 'status-dot enabled';
-                text.textContent = 'Connected';
-                connectBtn.disabled = true;
-                disconnectBtn.disabled = false;
-            } else {
-                dot.className = 'status-dot disconnected';
-                text.textContent = 'Disconnected';
-                connectBtn.disabled = false;
-                disconnectBtn.disabled = true;
-            }
-        }
-
-        // OSC functions
-        function oscConnect() {
-            const sendIp = document.getElementById('oscSendIp').value;
-            const sendPort = parseInt(document.getElementById('oscSendPort').value);
-            const recvIp = document.getElementById('oscRecvIp').value;
-            const recvPort = parseInt(document.getElementById('oscRecvPort').value);
-            const modeRadio = document.querySelector('input[name="oscMode"]:checked');
-            const mode = modeRadio ? parseInt(modeRadio.value) : 3;
-            const sendMovement = document.getElementById('oscSendMovement').checked;
-            const sendTemplate = document.getElementById('oscSendTemplate').checked;
-
-            sendCmd('osc_connect', {
-                send_ip: sendIp,
-                send_port: sendPort,
-                recv_ip: recvIp,
-                recv_port: recvPort,
-                mode: mode,
-                send_movement: sendMovement,
-                send_template: sendTemplate
-            });
-
-            const modeNames = {1: 'Receive', 2: 'Send', 3: 'Both'};
-            const sendAddrs = [];
-            if (sendMovement) sendAddrs.push('/movement');
-            if (sendTemplate) sendAddrs.push('/template_step');
-            const addrInfo = sendAddrs.length > 0 ? ` [${sendAddrs.join(', ')}]` : '';
-            log(`Starting OSC (${modeNames[mode]}): Recv ${recvIp}:${recvPort}, Send ${sendIp}:${sendPort}${addrInfo}`, 'com');
-        }
-
-        function oscDisconnect() {
-            sendCmd('osc_disconnect');
-            log('Stopping OSC', 'com');
-        }
-
-        function updateOscStatus(connected, info) {
-            const dot = document.getElementById('oscStatusDot');
-            const text = document.getElementById('oscStatusText');
-            const connectBtn = document.getElementById('oscConnectBtn');
-            const disconnectBtn = document.getElementById('oscDisconnectBtn');
-            const connectionInfo = document.getElementById('oscConnectionInfo');
-            const recvInfo = document.getElementById('oscRecvInfo');
-            const sendInfo = document.getElementById('oscSendInfo');
-
-            if (connected) {
-                dot.className = 'status-dot enabled';
-                text.textContent = 'Connected';
-                connectBtn.disabled = true;
-                disconnectBtn.disabled = false;
-
-                // Show connection info with IP:port
-                if (connectionInfo) {
-                    connectionInfo.style.display = 'block';
-                    if (recvInfo) {
-                        const recvIp = document.getElementById('oscRecvIp').value;
-                        const recvPort = document.getElementById('oscRecvPort').value;
-                        recvInfo.textContent = `Listening: ${recvIp}:${recvPort}`;
-                    }
-                    if (sendInfo) {
-                        const sendIp = document.getElementById('oscSendIp').value;
-                        const sendPort = document.getElementById('oscSendPort').value;
-                        sendInfo.textContent = `Sending to: ${sendIp}:${sendPort}`;
-                    }
-                }
-            } else {
-                dot.className = 'status-dot disconnected';
-                text.textContent = 'Disconnected';
-                connectBtn.disabled = false;
-                disconnectBtn.disabled = true;
-                if (connectionInfo) connectionInfo.style.display = 'none';
             }
         }
 

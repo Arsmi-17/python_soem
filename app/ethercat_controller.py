@@ -75,7 +75,12 @@ class EtherCATController:
             if not interface:
                 self.interface = cfg.get('network_interface')
             mode_str = cfg.get('mode', 'CSP').upper()
-            self.mode = self.MODE_CSP if mode_str == 'CSP' else self.MODE_PP
+            if mode_str == 'CSP':
+                self.mode = self.MODE_CSP
+            elif mode_str == 'PV':
+                self.mode = self.MODE_PV
+            else:
+                self.mode = self.MODE_PP
             self.ACTUAL_STEPS_PER_METER = cfg.get('actual_steps_per_meter', 792914)
             self.RAW_STEPS_PER_METER = cfg.get('raw_steps_per_meter', 202985985)
             
@@ -93,7 +98,8 @@ class EtherCATController:
         
         self.SCALE_FACTOR = self.ACTUAL_STEPS_PER_METER / self.RAW_STEPS_PER_METER
         
-        print(f"Mode: {'CSP' if self.mode == self.MODE_CSP else 'PP'}")
+        mode_names = {self.MODE_PP: 'PP', self.MODE_PV: 'PV', self.MODE_CSP: 'CSP'}
+        print(f"Mode: {mode_names.get(self.mode, 'Unknown')}")
 
         # PDO thread
         self._pdo_thread = None
@@ -238,7 +244,8 @@ class EtherCATController:
                 
                 # Set mode
                 slave.sdo_write(0x6060, 0x00, bytes([self.mode]))
-                print(f"  Mode: {'CSP' if self.mode == self.MODE_CSP else 'PP'} ({self.mode})")
+                mode_name = {self.MODE_PP: 'PP', self.MODE_PV: 'PV', self.MODE_CSP: 'CSP'}.get(self.mode, 'Unknown')
+                print(f"  Mode: {mode_name} ({self.mode})")
                 
                 # CSP sync compensation parameters
                 if self.mode == self.MODE_CSP:

@@ -42,6 +42,9 @@ class MotorProcess:
     CMD_RECOVER = 'recover'  # Manual recovery after communication error
     CMD_OSC_CONNECT = 'osc_connect'  # Start OSC sender/receiver
     CMD_OSC_DISCONNECT = 'osc_disconnect'  # Stop OSC
+    CMD_HEXORA_START = 'hexora_start'  # Start Hexora OSC handler
+    CMD_HEXORA_STOP = 'hexora_stop'  # Stop Hexora OSC handler
+    CMD_HEXORA_CONFIG = 'hexora_config'  # Configure Hexora settings
     CMD_LIST_CONFIGS = 'list_configs'  # List JSON config files
     CMD_QUIT = 'quit'
 
@@ -78,6 +81,10 @@ class MotorProcess:
         self.shared_osc_port = Value(ctypes.c_int, 8001)
         self.shared_osc_send_movement = Value(ctypes.c_int, 0)  # 0=disabled, 1=enabled (default false)
         self.shared_osc_send_template = Value(ctypes.c_int, 1)  # 0=disabled, 1=enabled (default true)
+
+        # Hexora OSC state (for PV mode open/close commands)
+        self.shared_hexora_connected = Value(ctypes.c_int, 0)  # 0=disconnected, 1=connected
+        self.shared_hexora_port = Value(ctypes.c_int, 8002)
 
         # Event tracking for UI notifications
         self.shared_event_type = Value(ctypes.c_int, 0)  # 0=none, 1=slave_change, 2=error, 3=info
@@ -124,7 +131,9 @@ class MotorProcess:
                 self.shared_osc_ip,
                 self.shared_osc_port,
                 self.shared_osc_send_movement,
-                self.shared_osc_send_template
+                self.shared_osc_send_template,
+                self.shared_hexora_connected,
+                self.shared_hexora_port
             )
         )
         self.process.start()
@@ -234,6 +243,8 @@ class MotorProcess:
             'osc_mode': self.shared_osc_mode.value,
             'osc_ip': osc_ip,
             'osc_port': self.shared_osc_port.value,
+            'hexora_connected': bool(self.shared_hexora_connected.value),
+            'hexora_port': self.shared_hexora_port.value,
             'event': event
         }
 
@@ -247,7 +258,8 @@ class MotorProcess:
                      shared_udp_connected, shared_udp_ip, shared_udp_port,
                      shared_event_type, shared_event_slave, shared_event_code, shared_event_msg, shared_event_counter,
                      shared_osc_connected, shared_osc_mode, shared_osc_ip, shared_osc_port,
-                     shared_osc_send_movement, shared_osc_send_template):
+                     shared_osc_send_movement, shared_osc_send_template,
+                     shared_hexora_connected, shared_hexora_port):
         """Main process loop"""
         import pysoem
 
@@ -323,6 +335,9 @@ class MotorProcess:
         # UDP receiver state
         udp_thread = None
         udp_shutdown = [False]  # Mutable flag for thread shutdown
+
+        # Hexora OSC handler (for PV mode open/close commands)
+        hexora_handler = None
 
         def send_response(success, message, data=None):
             resp_queue.put({
@@ -680,6 +695,26 @@ class MotorProcess:
                 print(f"[OSC] Could not load config: {e}, using defaults")
                 return default_config
 
+        def load_hexora_config():
+            """Load Hexora configuration from json/hexora/hexora_receiver.json"""
+            import os as os_module
+            import json as json_module
+            config_path = os_module.path.join(os_module.path.dirname(__file__), 'json', 'hexora', 'hexora_receiver.json')
+            default_config = {
+                "slaves": [1, 2],
+                "positions": {"pos1": 0.0, "pos2": 0.028},
+                "speed": {"max_speed": 1000, "acc_dec_speed": 300},
+                "movement": {"decel_distance": 0.008, "min_distance_for_cruise": 0.01, "ramp_steps": 30, "ramp_interval": 0.03}
+            }
+            try:
+                with open(config_path, 'r') as f:
+                    config = json_module.load(f)
+                    print(f"[HEXORA] Loaded config from {config_path}")
+                    return config
+            except Exception as e:
+                print(f"[HEXORA] Could not load config: {e}, using defaults")
+                return default_config
+
         # Load OSC config
         osc_config = load_osc_config()
 
@@ -702,6 +737,9 @@ class MotorProcess:
         osc_movement_target = [0.0]  # Target position
         osc_movement_value = [0]  # Original /start value (for /reached message)
         osc_movement_thread = [None]  # Thread for position broadcasting
+
+        # Hexora movement state - prevents concurrent movements
+        hexora_moving = [False]
 
         def osc_movement_broadcaster(controller):
             """
@@ -754,16 +792,21 @@ class MotorProcess:
             """
             Listen for incoming OSC messages.
             Supported commands:
-            - /start [value]                           - Move slave0 to mapped position (1->0.1, 2->0.5, 3->1.0, 4->1.5, 5->2.0)
+            Rotorscope:
+            - /start [value]                           - Move slave0 to mapped position (0->0, 1->0.1, 2->0.5, etc.)
             - /move [slave] [position]                 - Move slave to position in meters
             - /slave_move/<slave_id> <position_float>  - Move slave to position (legacy format)
             - /home                                    - Move all slaves to home (0m)
+            General:
             - /template_run                            - Run current template
             - /template_stop                           - Stop template
             - /stop                                    - Emergency stop
             - /enable                                  - Enable all drives
             - /disable                                 - Disable all drives
             - /reset                                   - Reset faults
+            Hexora (PV mode only):
+            - /hexora_open                             - Move slaves from pos1 to pos2
+            - /hexora_close                            - Move slaves from pos2 to pos1
             """
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -777,7 +820,7 @@ class MotorProcess:
                 return
 
             print(f"[OSC] Receiver started on {ip}:{port}")
-            print(f"[OSC] Value mapping for /start: {OSC_START_VALUE_MAP}")
+            print(f"[OSC] Rotorscope /start value mapping: {OSC_START_VALUE_MAP}")
 
             while not shutdown_flag[0] and running.value:
                 try:
@@ -923,6 +966,170 @@ class MotorProcess:
                     elif address == '/reset':
                         print("[OSC] Triggering reset")
                         cmd_queue.put({'cmd': MotorProcess.CMD_RESET})
+
+                    # =========================================================
+                    # /hexora_open - Move slaves from pos1 to pos2 (PV mode only)
+                    # /hexora_close - Move slaves from pos2 to pos1 (PV mode only)
+                    # Config loaded from json/hexora/hexora_receiver.json
+                    # =========================================================
+                    elif address == '/hexora_open' or address == '/hexora_close':
+                        # Check if movement already in progress
+                        if hexora_moving[0]:
+                            print(f"[HEXORA] {address} ignored - movement already in progress")
+                            add_osc_log('warn', f"{address} ignored - busy")
+                            continue
+
+                        # Load Hexora configuration from JSON using helper function
+                        hexora_cfg = load_hexora_config()
+                        # Parse config (slaves are 1-indexed in JSON, convert to 0-indexed)
+                        HEXORA_SLAVES = [s - 1 for s in hexora_cfg.get('slaves', [1, 2])]
+                        positions = hexora_cfg.get('positions', {})
+                        HEXORA_POS1 = positions.get('pos1', 0.0)
+                        HEXORA_POS2 = positions.get('pos2', 0.028)
+                        speed_cfg = hexora_cfg.get('speed', {})
+                        HEXORA_SPEED = speed_cfg.get('max_speed', 1000)
+                        HEXORA_ACC_DEC = speed_cfg.get('acc_dec_speed', 300)
+                        movement_cfg = hexora_cfg.get('movement', {})
+                        HEXORA_DECEL_DIST = movement_cfg.get('decel_distance', 0.008)
+                        HEXORA_MIN_CRUISE = movement_cfg.get('min_distance_for_cruise', 0.01)
+                        HEXORA_RAMP_STEPS = movement_cfg.get('ramp_steps', 30)
+                        HEXORA_RAMP_INTERVAL = movement_cfg.get('ramp_interval', 0.03)
+                        print(f"[HEXORA] Config: slaves={[s+1 for s in HEXORA_SLAVES]}, pos1={HEXORA_POS1}m, pos2={HEXORA_POS2}m, speed={HEXORA_SPEED}, acc_dec={HEXORA_ACC_DEC}")
+
+                        # Check if in PV mode (mode 3)
+                        if shared_mode.value != 3:
+                            mode_names = {1: 'PP', 3: 'PV', 8: 'CSP'}
+                            current_mode = mode_names.get(shared_mode.value, str(shared_mode.value))
+                            print(f"[OSC] {address} ignored - not in PV mode (current: {current_mode})")
+                            add_osc_log('warn', f"{address} ignored - PV mode required")
+                        else:
+                            target_pos = HEXORA_POS2 if address == '/hexora_open' else HEXORA_POS1
+                            action = 'Opening' if address == '/hexora_open' else 'Closing'
+                            print(f"[OSC] {address} -> {action} to {target_pos}m")
+                            add_osc_log('info', f"{address} -> {action} to {target_pos}m")
+
+                            # Start movement in a thread to not block OSC receiver
+                            def hexora_move(target, slaves, speed, acc_dec, decel_dist, min_cruise, ramp_steps, ramp_interval):
+                                hexora_moving[0] = True
+                                try:
+                                    ramp_step = max(30, (speed - acc_dec) // ramp_steps)
+                                    print(f"  [HEXORA] Ramp config: step={ramp_step}, interval={ramp_interval}s, decel_dist={decel_dist}m")
+
+                                    # Configure servo speed for all slaves BEFORE movement
+                                    # This sets the servo's internal speed/accel/decel parameters
+                                    for s in slaves:
+                                        if s < controller.slaves_count:
+                                            controller.configure_speed(s, speed, acc_dec, acc_dec)
+                                    print(f"  [HEXORA] Servo configured: vel={speed}, accel={acc_dec}, decel={acc_dec}")
+
+                                    slave_directions = {}
+                                    slave_phase = {}
+                                    slave_current_speed = {}
+                                    slaves_moving = set()
+
+                                    for s in slaves:
+                                        if s >= controller.slaves_count:
+                                            print(f"  [HEXORA] Slave {s+1} not available (only {controller.slaves_count} slaves)")
+                                            continue
+                                        current_pos = controller.read_position_meters(s)
+                                        total_distance = abs(target - current_pos)
+
+                                        if total_distance < 0.0001:
+                                            print(f"  [HEXORA] Slave {s+1} already at {target}m")
+                                            continue
+
+                                        slave_directions[s] = 1 if target > current_pos else -1
+                                        if total_distance < min_cruise:
+                                            slave_phase[s] = 'slow_only'
+                                            print(f"  [HEXORA] Slave {s+1}: short distance ({total_distance:.4f}m) -> slow_only mode")
+                                        else:
+                                            slave_phase[s] = 'accel'
+                                            print(f"  [HEXORA] Slave {s+1}: distance={total_distance:.4f}m -> starting ACCEL at speed={acc_dec}")
+                                        slave_current_speed[s] = acc_dec
+
+                                        if slave_directions[s] == 1:
+                                            controller.velocity_forward(s, acc_dec)
+                                        else:
+                                            controller.velocity_backward(s, acc_dec)
+                                        slaves_moving.add(s)
+
+                                    if not slaves_moving:
+                                        print(f"  [HEXORA] No slaves to move")
+                                        return
+
+                                    last_ramp_time = time.time()
+                                    move_start_time = time.time()
+                                    while slaves_moving and running.value:
+                                        current_time = time.time()
+                                        do_ramp = (current_time - last_ramp_time) >= ramp_interval
+
+                                        for s in list(slaves_moving):
+                                            current_pos = controller.read_position_meters(s)
+                                            direction = slave_directions[s]
+                                            phase = slave_phase[s]
+                                            curr_speed = slave_current_speed[s]
+                                            dist_to_target = abs(target - current_pos)
+
+                                            # Check if reached
+                                            reached = (direction == 1 and current_pos >= target) or \
+                                                      (direction == -1 and current_pos <= target)
+                                            if reached:
+                                                controller.velocity_stop(s)
+                                                slaves_moving.discard(s)
+                                                elapsed = time.time() - move_start_time
+                                                print(f"  [HEXORA] Slave {s+1} reached {current_pos:.4f}m in {elapsed:.3f}s (final phase: {phase})")
+                                                continue
+
+                                            # Phase transitions with logging
+                                            if phase == 'accel':
+                                                if dist_to_target <= decel_dist:
+                                                    slave_phase[s] = 'decel'
+                                                    print(f"  [HEXORA] Slave {s+1}: ACCEL -> DECEL at speed={curr_speed}, dist={dist_to_target:.4f}m")
+                                                elif do_ramp and curr_speed < speed:
+                                                    new_speed = min(curr_speed + ramp_step, speed)
+                                                    slave_current_speed[s] = new_speed
+                                                    if direction == 1:
+                                                        controller.velocity_forward(s, new_speed)
+                                                    else:
+                                                        controller.velocity_backward(s, new_speed)
+                                                    if new_speed >= speed:
+                                                        slave_phase[s] = 'cruise'
+                                                        print(f"  [HEXORA] Slave {s+1}: ACCEL -> CRUISE at max speed={new_speed}")
+                                            elif phase == 'cruise':
+                                                if dist_to_target <= decel_dist:
+                                                    slave_phase[s] = 'decel'
+                                                    print(f"  [HEXORA] Slave {s+1}: CRUISE -> DECEL at speed={curr_speed}, dist={dist_to_target:.4f}m")
+                                            elif phase == 'decel':
+                                                if do_ramp and curr_speed > acc_dec:
+                                                    new_speed = max(curr_speed - ramp_step, acc_dec)
+                                                    slave_current_speed[s] = new_speed
+                                                    if direction == 1:
+                                                        controller.velocity_forward(s, new_speed)
+                                                    else:
+                                                        controller.velocity_backward(s, new_speed)
+
+                                        if do_ramp:
+                                            last_ramp_time = current_time
+                                        time.sleep(0.005)
+
+                                    # Safety stop
+                                    for s in slaves:
+                                        if s < controller.slaves_count:
+                                            controller.velocity_stop(s)
+                                    total_time = time.time() - move_start_time
+                                    print(f"  [HEXORA] Movement complete in {total_time:.3f}s")
+                                except Exception as e:
+                                    print(f"  [HEXORA] Error: {e}")
+                                finally:
+                                    hexora_moving[0] = False
+
+                            hexora_thread = threading.Thread(
+                                target=hexora_move,
+                                args=(target_pos, HEXORA_SLAVES, HEXORA_SPEED, HEXORA_ACC_DEC,
+                                      HEXORA_DECEL_DIST, HEXORA_MIN_CRUISE, HEXORA_RAMP_STEPS, HEXORA_RAMP_INTERVAL),
+                                daemon=True
+                            )
+                            hexora_thread.start()
 
                 except socket.timeout:
                     continue
@@ -1722,6 +1929,72 @@ class MotorProcess:
                         print("\n[OSC] Stopping OSC...")
                         stop_osc()
                         send_response(True, "OSC disconnected")
+
+                    elif cmd == MotorProcess.CMD_HEXORA_START:
+                        # Start Hexora OSC handler for /hexora_open and /hexora_close
+                        try:
+                            if hexora_handler is not None and hexora_handler.is_running():
+                                send_response(False, "Hexora OSC already running")
+                            else:
+                                hexora_ip = data.get('ip', '0.0.0.0') if data else '0.0.0.0'
+                                hexora_port = data.get('port', 8002) if data else 8002
+
+                                # Create Hexora handler with EtherCAT controller
+                                from hexora_osc import HexoraOSC
+                                hexora_handler = HexoraOSC(
+                                    motor_process=None,  # We pass ec directly
+                                    ethercat_controller=ec,
+                                    on_log=lambda t, m: add_osc_log(t, f"[Hexora] {m}")
+                                )
+
+                                # Configure if settings provided
+                                if data:
+                                    hexora_handler.configure(
+                                        slaves=data.get('slaves', [0]),
+                                        pos1=data.get('pos1', 0.0),
+                                        pos2=data.get('pos2', 0.5),
+                                        speed=data.get('speed', 3000),
+                                        acc_dec_speed=data.get('acc_dec_speed', 1700)
+                                    )
+
+                                # Provide mode checker that uses shared memory
+                                hexora_handler._get_current_mode = lambda: shared_mode.value
+
+                                hexora_handler.start(ip=hexora_ip, port=hexora_port)
+                                shared_hexora_connected.value = 1
+                                shared_hexora_port.value = hexora_port
+                                print(f"\n[HEXORA] Started on {hexora_ip}:{hexora_port}")
+                                send_response(True, f"Hexora OSC started on {hexora_ip}:{hexora_port}")
+                        except Exception as e:
+                            print(f"\n[HEXORA] Error starting: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            send_response(False, f"Hexora OSC failed to start: {e}")
+
+                    elif cmd == MotorProcess.CMD_HEXORA_STOP:
+                        # Stop Hexora OSC handler
+                        if hexora_handler is not None:
+                            hexora_handler.stop()
+                            hexora_handler = None
+                            shared_hexora_connected.value = 0
+                            print("\n[HEXORA] Stopped")
+                            send_response(True, "Hexora OSC stopped")
+                        else:
+                            send_response(True, "Hexora OSC was not running")
+
+                    elif cmd == MotorProcess.CMD_HEXORA_CONFIG:
+                        # Configure Hexora settings (while running or before start)
+                        if hexora_handler is not None:
+                            hexora_handler.configure(
+                                slaves=data.get('slaves'),
+                                pos1=data.get('pos1'),
+                                pos2=data.get('pos2'),
+                                speed=data.get('speed'),
+                                acc_dec_speed=data.get('acc_dec_speed')
+                            )
+                            send_response(True, "Hexora config updated")
+                        else:
+                            send_response(False, "Hexora OSC not running - start it first")
 
                     elif cmd == MotorProcess.CMD_GET_ADAPTERS:
                         # Get list of available network adapters
