@@ -740,6 +740,7 @@ class MotorProcess:
 
         # Hexora movement state - prevents concurrent movements
         hexora_moving = [False]
+        hexora_stop_requested = [False]  # Flag to stop ongoing hexora movement
 
         def osc_movement_broadcaster(controller):
             """
@@ -1011,6 +1012,7 @@ class MotorProcess:
                             # Start movement in a thread to not block OSC receiver
                             def hexora_move(target, slaves, speed, acc_dec, decel_dist, min_cruise, ramp_steps, ramp_interval):
                                 hexora_moving[0] = True
+                                hexora_stop_requested[0] = False  # Reset stop flag at start
                                 try:
                                     ramp_step = max(30, (speed - acc_dec) // ramp_steps)
                                     print(f"  [HEXORA] Ramp config: step={ramp_step}, interval={ramp_interval}s, decel_dist={decel_dist}m")
@@ -1059,7 +1061,7 @@ class MotorProcess:
 
                                     last_ramp_time = time.time()
                                     move_start_time = time.time()
-                                    while slaves_moving and running.value:
+                                    while slaves_moving and running.value and not hexora_stop_requested[0]:
                                         current_time = time.time()
                                         do_ramp = (current_time - last_ramp_time) >= ramp_interval
 
@@ -1112,12 +1114,17 @@ class MotorProcess:
                                             last_ramp_time = current_time
                                         time.sleep(0.005)
 
-                                    # Safety stop
+                                    # Check if stopped by request
+                                    if hexora_stop_requested[0]:
+                                        print(f"  [HEXORA] Movement stopped by OSC disconnect")
+
+                                    # Safety stop - stop all slaves
                                     for s in slaves:
                                         if s < controller.slaves_count:
                                             controller.velocity_stop(s)
                                     total_time = time.time() - move_start_time
-                                    print(f"  [HEXORA] Movement complete in {total_time:.3f}s")
+                                    if not hexora_stop_requested[0]:
+                                        print(f"  [HEXORA] Movement complete in {total_time:.3f}s")
                                 except Exception as e:
                                     print(f"  [HEXORA] Error: {e}")
                                 finally:
@@ -1180,8 +1187,19 @@ class MotorProcess:
             send_response(True, f"OSC started ({mode_str}) - Send: {send_ip}:{send_port}, Recv: {recv_ip}:{recv_port}")
 
         def stop_osc():
-            """Stop OSC sender and receiver"""
+            """Stop OSC sender and receiver, including any ongoing hexora movement"""
             nonlocal osc_send_socket, osc_recv_thread, osc_recv_shutdown
+
+            # Stop any ongoing hexora movement first
+            if hexora_moving[0]:
+                print("[OSC] Stopping ongoing Hexora movement...")
+                hexora_stop_requested[0] = True
+                # Wait for movement to stop (max 2 seconds)
+                wait_start = time.time()
+                while hexora_moving[0] and (time.time() - wait_start) < 2.0:
+                    time.sleep(0.05)
+                if hexora_moving[0]:
+                    print("[OSC] Warning: Hexora movement did not stop in time")
 
             # Stop receiver
             if osc_recv_thread[0] and osc_recv_thread[0].is_alive():
